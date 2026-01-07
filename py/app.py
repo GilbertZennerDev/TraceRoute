@@ -7,8 +7,8 @@ currently my trajectory works in 2d
 
 import sys
 import random as r
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
 
 def genPoints(amount, spread):
 	points = [{'id': i, 'x': r.randint(0, spread), 'y': r.randint(0, spread)} for i in range(amount)]
@@ -23,22 +23,17 @@ def getLineEquation(p1, p2):
 	return a, b
 
 def getOrthoLine(a, point):
-	if a != 0:
-		a_o = - 1 / a
-	else:
-		a_o = - 1 / 0.001
+	if a != 0: a_o = - 1 / a
+	else: a_o = - 1 / 0.001
 	b_o = point['y'] - a_o * point['x']
 	return a_o, b_o
 	
 def getIntersectPoint(a, b, a_o, b_o):
-	try:
-		div = (a - a_o)
-		if not div: div = 0.001
-		x_inter = (b_o - b)/div
-		y_inter = a_o * x_inter + b_o
-		return x_inter, y_inter
-	except Exception as e:
-		print(e); exit()
+	div = (a - a_o)
+	if div == 0: div = 0.001
+	x_inter = (b_o - b)/div
+	y_inter = a_o * x_inter + b_o
+	return x_inter, y_inter
 
 def getDistTwoPoints(p1, p2):
 	return ((p2['y'] - p1['y'])**2 + (p2['x'] - p1['x'])**2)**.5
@@ -59,7 +54,6 @@ def getIntersectPoint2(intersect_arr, id):
 		if p['id'] == id: return (p)
 	return -1
 
-#closestPoints = xClosestPoints(dist_arr_sorted, amountClosestPoints, intersect_arr, start, end)
 def xClosestPoints(sortedPoints, x, intersect_arr, start, end):
 	cleanSortedPoints = []
 	for p in sortedPoints:
@@ -74,9 +68,7 @@ def xClosestPoints(sortedPoints, x, intersect_arr, start, end):
 def printArr(arr):
 	for el in arr: print(el)
 	print("*"*30)
-	
-#hun e klenge Problem erkannt: ClosestPoints kennen och op der falscher Seit sinn
-#muss checken op se zweschend Start an Enn sinn
+
 def printPointsMap(points, xClosestPoints, start, end, amountPoints, spread):
 	x = [p['x'] for p in points]
 	y = [p['y'] for p in points]
@@ -103,11 +95,6 @@ def checks(amountPoints, startIndex, endIndex, amountClosestPoints):
 	if startIndex == endIndex: error = True
 	if error: print("Bad Args"); exit()
 	
-#wei fannen ech erauser op een Punkt zweschent zwee aanere Leit?
-#ech keint den Wenkel zesch Path and Linn huelen (vu Start)
-#dei Point of Intersect muss dann zweschent dem x vun start and dem x vun end leien
-#also x_inter > x_start and x_inter < x_end
-
 def	main():
 	av = sys.argv
 	ac = len(av)
