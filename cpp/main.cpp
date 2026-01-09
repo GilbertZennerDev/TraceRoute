@@ -1,179 +1,153 @@
-/*
-"""
-the idea is to construct a route between points on a grid
-currently my trajectory works in 2d
-
-3D will be implemented soon
-"""
-
-import sys
-import random as r
-
-def genPoints(amount):
-	points = [{'id': i, 'x': r.randint(-1000, 1000), 'y': r.randint(-1000, 1000)} for i in range(amount)]
-	return points
-	
-def getPointPos(points, _id):
-	return points[_id]
-
-def getLineEquation(p1, p2):
-	a = (p2['y'] - p1['y'])/(p2['x'] - p1['x'])
-	b = p1['y'] - a * p1['x']
-	return a, b
-
-def getOrthoLine(a, point):
-	a_o = - 1 / a
-	b_o = point['y'] - a_o * point['x']
-	return a_o, b_o
-	
-def getIntersectPoint(a, b, a_o, b_o):
-	x_inter = (b_o - b)/(a - a_o)
-	y_inter = a_o * x_inter + b_o
-	return x_inter, y_inter
-
-def getTriArea(length, height):
-	return 0.5 * length * height
-
-def getDistTwoPoints(p1, p2):
-	return ((p2['y'] - p1['y'])**2 + (p2['x'] - p1['x'])**2)**.5
-	
-def xClosestPoints(sortedPoints, x):
-	arr = sortedPoints[:x]
-	return arr
-	
-def printArr(arr):
-	for el in arr: print(el)
-	print("*"*30)
-
-def checks(amountPoints, startIndex, endIndex, amountClosestPoints):
-	error = False
-	if amountPoints < 2: error = True
-	if startIndex < 0 or startIndex > amountPoints - 1: error = True
-	if endIndex < 0 or endIndex > amountPoints - 1: error = True
-	if amountClosestPoints < 1 or amountClosestPoints > amountPoints: error = True
-	if startIndex == endIndex: error = True
-	if error: print("Bad Args"); exit()
-
-def	main():
-	av = sys.argv
-	ac = len(av)
-	if ac != 5: print(f"Usage:python3 {av[0]} \
-	amountPoints startIndex endIndex amountClosestPoints"); exit()
-	
-	amountPoints = int(av[1])
-	startIndex = int(av[2])
-	endIndex = int(av[3])
-	amountClosestPoints = int(av[4])
-	
-	checks(amountPoints, startIndex, endIndex, amountClosestPoints)
-	
-	points = genPoints(amountPoints)
-	start = getPointPos(points, startIndex)
-	end = getPointPos(points, endIndex)
-
-	rest = [p for p in points if p['id'] != startIndex and p['id'] != endIndex]
-	a, b = getLineEquation(start, end)
-	dist_arr = []
-	for p in rest:
-		a_o, b_o = getOrthoLine(a, p)
-		x_inter, y_inter = getIntersectPoint(a, b, a_o, b_o)
-		p1 = {'x': x_inter, 'y': y_inter}
-		distance = getDistTwoPoints(p1, p)
-		dist_arr.append({'id': p['id'], 'distance': round(distance, 0)})
-	dist_arr_sorted = sorted(dist_arr, key=lambda x: x['distance'])
-	printArr(dist_arr_sorted)
-
-	closestPoints = xClosestPoints(dist_arr_sorted, amountClosestPoints)
-	printArr(closestPoints)
-
-	distance_to_start = []
-	for p in closestPoints:
-		currentPoint = getPointPos(points, p['id'])
-		distance = getDistTwoPoints(currentPoint, start)
-		distance_to_start.append({'id': p['id'], 'distance': round(distance, 0)})
-	distance_to_start_sorted = sorted(distance_to_start, key=lambda x: x['distance'])
-	path_ids = [p['id'] for p in distance_to_start_sorted]
-	trajectory = [start['id']] + path_ids + [end['id']]
-	print(trajectory)
-
-if __name__ == '__main__': main()*/
-
+#include <map>
 #include <vector>
-#include <iostream>
 #include <random>
+#include <iostream>
 using namespace std;
 
 class Point
 {
 	private:
-	unsigned int	id;
 	double			x;
 	double			y;
+	unsigned int	id;
 	public:
+	Point();
+	Point(const double &x, const double &y);
+	Point &operator=(const Point &p);
 	Point(unsigned int _id, unsigned int &spread);
-	double getX();
-	double getY();
+
+	double getX() const;
+	double getY() const;
+	unsigned int getId() const;
 };
+
+Point::Point(){}
+
+Point::Point(const double &_x, const double &_y)
+{
+	x = _x;
+	y = _y;
+}
+
+Point& Point::operator=(const Point &p)
+{
+	if (this != &p)
+	{
+		this->id = p.getId();
+		this->x = p.getX();
+		this->y = p.getY();
+	}
+	return (*this);
+}
 
 Point::Point(unsigned int _id, unsigned int &spread)
 {
 	id = _id;
-	x = -spread + rand() % 2 * spread;
-	y = -spread + rand() % 2 * spread;
+	x = rand() % spread;
+	y = rand() % spread;
 }
 
-double Point::getX(){return x;}
-double Point::getY(){return y;}
+unsigned int Point::getId() const
+{return id;}
+double Point::getX() const
+{return x;}
+double Point::getY() const
+{return y;}
 
-void genPoints(unsigned int amount, vector<Point *> &points, unsigned int &spread)
+void genPoints(const unsigned int amount, vector<Point *> &points, unsigned int spread)
 {
 	int i;
 
 	i = -1;
 	while (++i < amount)
 		points.push_back(new Point(i, spread));
+	cout << "Points generated!\n";
 }
 
-Point *getPointPos(vector<Point *> &points, unsigned int	id)
+void deletePoints(const vector<Point *> &points)
+{
+		vector<Point *>::const_iterator it;
+
+		it = points.begin();
+		while (it != points.end())
+			delete *it++;
+		cout << "Points deleted!\n";
+}
+
+Point *getPointPos(const vector<Point *> &points, const unsigned int id)
 {
 	return (points[id]);
 }
 
-void getLineEquation(double &a, double &b, Point &p1, Point &p2)
+void getLineEquation(double &a, double &b, const Point &p1, const Point &p2)
 {
 	a = (p2.getY() - p1.getY())/(p2.getX() - p1.getX());
 	b = p1.getY() - a * p1.getX();
 }
 
-void getOrthoLine(double &a, Point &p1, double &a_o, double &b_o)
+void getOrthoLine(double &a, const Point &p1, double &a_o, double &b_o)
 {
+	if (a == 0) a = 0.001;
 	a_o = - 1 / a;
 	b_o = p1.getY() - a_o * p1.getX();
 }
 
-void getIntersectPoint(double &a, double &b, double &a_o,\
-double &b_o, double &x_inter, double &y_inter)
+void getIntersectPoint(const double &a, const double &b, const double &a_o,\
+const double &b_o, double &x_inter, double &y_inter)
 {
-	x_inter = (b_o - b)/(a - a_o);
+	double div;
+
+	div = (a - a_o);
+	if (div == 0) div = 0.001;
+	x_inter = (b_o - b)/div;
 	y_inter = a_o * x_inter + b_o;
 }
 
-double getDistTwoPoints(Point p1, Point p2)
+double getDistTwoPoints(const Point &p1, const Point &p2)
 {
 	return (sqrt(pow(p2.getY() - p1.getY(), 2) + pow(p2.getX() - p1.getX(), 2)));
 }
 
-void xClosestPoints(vector<Point *> &arr, vector<Point *> &sortedPoints, unsigned int x)
+Point *getIntersectPoint2(map<unsigned int, Point *> &intersect_arr, const unsigned int id)
 {
-	int i;
-
-	i = -1;
-	arr.clear();
-	while (++i < x)
-		arr.push_back(sortedPoints[i]);
+	return (intersect_arr[id]);
 }
 
-void printArr(vector<Point *> &arr)
+bool	PointIsBetweenStartEnd(const Point &start, const Point &end, const Point &InterSectPoint)
+{
+	double tmp;
+	double x_end;
+	double x_inter;
+	double x_start;
+	
+	x_end = end.getX();
+	x_start = start.getX();
+	x_inter = InterSectPoint.getX();
+
+	//#special case x_start == x_end
+	if (x_start > x_end)
+	{
+		tmp = x_start;
+		x_start = x_end;
+		x_end = tmp;
+	}
+	return (x_inter > x_start && x_inter < x_end);
+}
+
+void xClosestPoints(vector<unsigned int> &sortedIds, const unsigned int _x, const Point &start, const Point &end)
+{
+	int				i;
+	unsigned int	x;
+
+	i = -1;
+	if (x > sortedIds.size()) x = sortedIds.size();
+	else x = _x;
+
+	sortedIds.erase(sortedIds.begin() + x - 1, sortedIds.end());
+	cout << "All Closest Points gathered!\n";
+}
+
+void printArr(const vector<unsigned int> &arr)
 {
 	int i;
 
@@ -186,26 +160,169 @@ void printArr(vector<Point *> &arr)
 	cout << "\n";
 }
 
-/*
+void printDistanceArr(const vector<unsigned int> &arr, const vector<Point *> &points, const Point &start)
+{
+	int i;
+	Point *p;
+	double distance;
 
-def checks(amountPoints, startIndex, endIndex, amountClosestPoints):
-	error = False
-	if amountPoints < 2: error = True
-	if startIndex < 0 or startIndex > amountPoints - 1: error = True
-	if endIndex < 0 or endIndex > amountPoints - 1: error = True
-	if amountClosestPoints < 1 or amountClosestPoints > amountPoints: error = True
-	if startIndex == endIndex: error = True
-	if error: print("Bad Args"); exit()	
+	i = 0;
+	while (++i < arr.size() - 1)
+	{
+		p = getPointPos(points, arr[i]);
+		distance = getDistTwoPoints(*p, start);
+		cout << distance << "\n";
+	}
+	i = -1;
+	while (++i < 30)
+		cout << "*";
+	cout << "\n";
+}
 
-*/
+void checks(const unsigned int amountPoints, const unsigned int startIndex, const unsigned int endIndex, const unsigned int amountClosestPoints)
+{
+	bool error;
+
+	error = false;
+	if (amountPoints < 2) error = true;
+	if (startIndex < 0 || startIndex > amountPoints - 1) error = true;
+	if (endIndex < 0 || endIndex > amountPoints - 1) error = true;
+	if (amountClosestPoints < 1 || amountClosestPoints > amountPoints) error = true;
+	if (startIndex == endIndex) error = true;
+	if (error) {cout << "Bad Args.\n"; exit(1);}
+	cout << "Checks done!\n";
+}
+
+unsigned int	getIdofMinDist(const map<unsigned int, double> &dist_arr)
+{
+	unsigned int								id;
+	map<unsigned int, double>::const_iterator	it;
+	double										min;
+
+	it = dist_arr.begin();
+	id = it->first;
+	min = numeric_limits<double>::max();
+	if (dist_arr.size() == 0) return (0);
+	while (it != dist_arr.end())
+	{
+		if (it->second <= min)
+		{
+			id = it->first;
+			min = it->second;
+		}
+		++it;
+	}
+	return (id);
+}
+
+void	sortDistArr(const map<unsigned int, double> &dist_arr, vector<unsigned int> &sortedIds)
+{
+	unsigned int id;
+	map<unsigned int, double> tmp_arr;
+	map<unsigned int, double>::iterator it;
+	map<unsigned int, double>::const_iterator cit;
+
+	cit = dist_arr.begin();
+	while (cit != dist_arr.end())
+	{
+		tmp_arr[cit->first] = cit->second;
+		++cit;
+	}
+	cout << "Tmp generated!\n";
+	sortedIds.clear();
+	while (tmp_arr.size())
+	{
+		id = getIdofMinDist(tmp_arr);
+		sortedIds.push_back(id);
+		it = tmp_arr.find(id);
+		if (it != tmp_arr.end()) tmp_arr.erase(it);
+		else cout << "Error: id " << id << " not found in map.\n";
+	}
+	cout << "Distances sorted!\n";
+}
+
+void checkIsSorted(const map<unsigned int, double> &testmap, const vector<unsigned int> &testvector)
+{
+	int											i;
+	map<unsigned int, double>::const_iterator	itm;
+	double										lastValue;
+
+	i = 0;
+	cout << "*****\nTest4\n";
+	lastValue = testmap.find(*testvector.begin())->second;
+	while (++i < testvector.size())
+	{
+		itm = testmap.find(testvector[i]);
+		cout << itm->first << " " << itm->second << "\n";
+		if (itm->second < lastValue){ cout << "Error: not sorted asc.\n" << itm->second << " " << lastValue << "\n";}
+		lastValue = itm->second;
+	}
+	cout << "Is Sorted Asc.\n";
+}
 
 int main(int ac, char **av)
 {
-	srand(time(NULL));
-	vector<Point *> points;
+	int							i;
+	double						a;
+	double						b;
+	unsigned int				spread;
+	unsigned int				endIndex;
+	unsigned int				startIndex;
+	unsigned int				amountPoints;
+	unsigned int				amountClosestPoints;
+	
+	Point						end;
+	Point						start;
+	
+//	vector<Point *>::iterator	itp;
+	vector<Point *>				points;
+	map<unsigned int, double>	dist_arr;
+	vector<unsigned int>		sortedIds;
 
-	unsigned int spread;
-	spread = 10;
-	genPoints(10, points, spread);
+	if (ac != 6){cout << "Usage: " << av[0] << " amountPoints startIndex endIndex amountClosestPoints Spread"; exit(1);}
+
+	srand(time(NULL));
+	
+	amountPoints = atoi(av[1]);
+	startIndex = atoi(av[2]);
+	endIndex = atoi(av[3]);
+	amountClosestPoints = atoi(av[4]);
+	spread = atoi(av[5]);
+	checks(amountPoints, startIndex, endIndex, amountClosestPoints);
+
+	genPoints(amountPoints, points, spread);
+	start = *getPointPos(points, startIndex);
+	end = *getPointPos(points, endIndex);
+	getLineEquation(a, b, start, end);
+
+	i = -1;
+//	itp = points.begin();
+	while (++i < points.size())
+//	while (itp != points.end())
+	{
+		Point *p;
+		double a_o;
+		double b_o;
+		double x_inter;
+		double y_inter;
+		double distance;
+		
+		if (points[i]->getId() == start.getId() || points[i]->getId() == end.getId()) continue;
+
+		p = getPointPos(points, i);
+		getOrthoLine(a, *p, a_o, b_o);
+		getIntersectPoint(a, b, a_o, b_o, x_inter, y_inter);
+		Point inter_p = Point(x_inter, y_inter);
+		distance = getDistTwoPoints(inter_p, *p);
+		if (PointIsBetweenStartEnd(start, end, inter_p)) dist_arr[p->getId()] = distance;
+//		++itp;
+		++i;
+	}
+	cout << "All Point Distances gathered!\n";
+	sortDistArr(dist_arr, sortedIds);
+	xClosestPoints(sortedIds, amountClosestPoints, start, end);
+	checkIsSorted(dist_arr, sortedIds);
+	deletePoints(points);
 	return (0);
 }
+
