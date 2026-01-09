@@ -2,6 +2,7 @@
 #include <vector>
 #include <random>
 #include <iostream>
+#include <fstream>
 using namespace std;
 
 class Point
@@ -260,6 +261,24 @@ void checkIsSorted(const map<unsigned int, double> &testmap, const vector<unsign
 	cout << "Is Sorted Asc.\n";
 }
 
+void saveCoords(const vector<Point *> &points, const vector<unsigned int> &sortedIds)
+{
+	int i;
+
+	i = -1;
+	ofstream outFile("pos.md");
+	while (++i < sortedIds.size())
+	{
+		Point p;
+
+		cout << "debug id:" << sortedIds[i] << "\n";
+		p = *getPointPos(points, sortedIds[i]);
+		outFile << p.getX() << " " << p.getY() << "\n";
+		cout << "debug pos: x:" << p.getX() << " y: " << p.getY() << "\n";
+	}
+	outFile.close();
+}
+
 int main(int ac, char **av)
 {
 	int							i;
@@ -322,6 +341,8 @@ int main(int ac, char **av)
 	sortDistArr(dist_arr, sortedIds);
 	xClosestPoints(sortedIds, amountClosestPoints, start, end);
 	checkIsSorted(dist_arr, sortedIds);
+
+	saveCoords(points, sortedIds);
 	deletePoints(points);
 	return (0);
 }
