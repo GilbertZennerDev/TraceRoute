@@ -3,12 +3,15 @@ the idea is to construct a route between points on a grid
 currently my trajectory works in 2d
 
 3D will be implemented soon
+no nach gesamt rees distanz berechnen:
+einfach durch den endarray loopen an jeweils distanz vun punkti zu punkti+1 rechnen an addeiren
 """
 
 import sys
 import random as r
 import numpy as np
 import matplotlib.pyplot as plt
+from math import sqrt as sqrt
 
 def genPoints(amount, spread):
 	points = [{'id': i, 'x': r.randint(0, spread), 'y': r.randint(0, spread)} for i in range(amount)]
@@ -81,9 +84,9 @@ def printPointsMap(points, xClosestPoints, start, end, amountPoints, spread):
 	x_start_end = [start['x'], end['x']]
 	y_start_end = [start['y'], end['y']]
 
-	plt.scatter(x, y)
-	plt.scatter(x_closest, y_closest, color='red')
-	plt.scatter(x_start_end, y_start_end, color='orange')
+	plt.scatter(x, y, marker='.')
+	plt.scatter(x_closest, y_closest, color='red', marker='.')
+	plt.scatter(x_start_end, y_start_end, color='orange', marker='x')
 	plt.show()
 
 def checks(amountPoints, startIndex, endIndex, amountClosestPoints):
@@ -111,7 +114,9 @@ def	main():
 	
 	points = genPoints(amountPoints, spread)
 	start = getPointPos(points, startIndex)
+	start = {'id': 0, 'x': 0, 'y': 0}
 	end = getPointPos(points, endIndex)
+	end = {'id': 1, 'x': spread, 'y': spread}
 
 	rest = [p for p in points if p['id'] != startIndex and p['id'] != endIndex]
 	a, b = getLineEquation(start, end)
@@ -138,6 +143,22 @@ def	main():
 	path_ids = [p['id'] for p in distance_to_start_sorted]
 	trajectory = [start['id']] + path_ids + [end['id']]
 	print(trajectory)
+	#berechne mer reesedistanz:#
+	getDistance = lambda p1, p2: sqrt((p2['x'] - p1['x'])**2 + (p2['y'] - p1['y'])**2)
+	direct_distance = getDistance(start, end)
+	print("Direct Distance:", direct_distance)
+	print("Should be:", sqrt(2*spread**2))
+	print("Diff:", direct_distance - sqrt(2*spread**2))
+	total_distance = 0
+	distances = []
+	for i in range(0, len(trajectory) - 1):
+		p1 = points[trajectory[i]]
+		p2 = points[trajectory[i + 1]]
+		dist = getDistance(p1, p2)
+		distances.append(distance)
+	print("Distances:", distances)
+	print("Total Distance:", sum(distances))
+	print("Diff to Direct Distance:", sum(distances) - direct_distance)
 	printPointsMap(points, closestPoints, start, end, amountPoints, spread)
 
 if __name__ == '__main__': main()
