@@ -249,12 +249,11 @@ void checkIsSorted(const map<unsigned int, double> &testmap, const vector<unsign
 	double										lastValue;
 
 	i = 0;
-	cout << "*****\nTest4\n";
 	lastValue = testmap.find(*testvector.begin())->second;
 	while (++i < testvector.size())
 	{
 		itm = testmap.find(testvector[i]);
-		cout << itm->first << " " << itm->second << "\n";
+		cout << "Id: " << itm->first << " Ortho Distance to Direct Connection: " << itm->second << "\n";
 		if (itm->second < lastValue){ cout << "Error: not sorted asc.\n" << itm->second << " " << lastValue << "\n";}
 		lastValue = itm->second;
 	}
@@ -271,10 +270,8 @@ void saveCoords(const vector<Point *> &points, const vector<unsigned int> &sorte
 	{
 		Point p;
 
-		cout << "debug id:" << sortedIds[i] << "\n";
 		p = *getPointPos(points, sortedIds[i]);
 		outFile << p.getX() << " " << p.getY() << "\n";
-		cout << "debug pos: x:" << p.getX() << " y: " << p.getY() << "\n";
 	}
 	outFile.close();
 }
