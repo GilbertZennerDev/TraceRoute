@@ -332,7 +332,7 @@ int main(int ac, char **av)
 		distance = getDistTwoPoints(inter_p, *p);
 		if (PointIsBetweenStartEnd(start, end, inter_p)) dist_arr[p->getId()] = distance;
 //		++itp;
-		++i;
+//		++i;
 	}
 	cout << "All Point Distances gathered!\n";
 	sortDistArr(dist_arr, sortedIds);
