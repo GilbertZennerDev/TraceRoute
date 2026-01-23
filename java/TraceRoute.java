@@ -365,6 +365,7 @@ public class TraceRoute extends Application
 	
 	public void runTraceRoute(String[] args)
 	{
+		long startTime = System.nanoTime();
 		double	a;
 		double	b;
 		int		i;
@@ -440,7 +441,10 @@ public class TraceRoute extends Application
 		print("Now saving the Points...");		
 		savePoints(sortedIds, points, "PointsPositions.md");
 		print("Done with Points, now time for the graph...");
+		long endTime = System.nanoTime() - startTime;
+		print("Time taken: " + (double) (endTime / 1000/1000/1000) + " seconds.");
 		launch(args);
+		
 	}
 	
 	public static void main(String[] args)
