@@ -195,17 +195,17 @@ void checks(const unsigned int amountPoints, const unsigned int startIndex, cons
 	cout << "Checks done!\n";
 }
 
-unsigned int	getIdofMinDist(const map<unsigned int, double> &dist_arr)
+unsigned int	getIdofMinDist(const map<unsigned int, double> &distances)
 {
 	unsigned int								id;
 	map<unsigned int, double>::const_iterator	it;
 	double										min;
 
-	it = dist_arr.begin();
+	it = distances.begin();
 	id = it->first;
 	min = numeric_limits<double>::max();
-	if (dist_arr.size() == 0) return (0);
-	while (it != dist_arr.end())
+	if (distances.size() == 0) return (0);
+	while (it != distances.end())
 	{
 		if (it->second <= min)
 		{
@@ -217,15 +217,15 @@ unsigned int	getIdofMinDist(const map<unsigned int, double> &dist_arr)
 	return (id);
 }
 
-void	sortDistArr(const map<unsigned int, double> &dist_arr, vector<unsigned int> &sortedIds)
+void	sortDistArr(const map<unsigned int, double> &distances, vector<unsigned int> &sortedIds)
 {
 	unsigned int id;
 	map<unsigned int, double> tmp_arr;
 	map<unsigned int, double>::iterator it;
 	map<unsigned int, double>::const_iterator cit;
 
-	cit = dist_arr.begin();
-	while (cit != dist_arr.end())
+	cit = distances.begin();
+	while (cit != distances.end())
 	{
 		tmp_arr[cit->first] = cit->second;
 		++cit;
@@ -293,7 +293,7 @@ int main(int ac, char **av)
 	
 //	vector<Point *>::iterator	itp;
 	vector<Point *>				points;
-	map<unsigned int, double>	dist_arr;
+	map<unsigned int, double>	distances;
 	vector<unsigned int>		sortedIds;
 
 	if (ac != 6){cout << "Usage: " << av[0] << " amountPoints startIndex endIndex amountClosestPoints Spread"; exit(1);}
@@ -331,14 +331,14 @@ int main(int ac, char **av)
 		getIntersectPoint(a, b, a_o, b_o, x_inter, y_inter);
 		Point inter_p = Point(x_inter, y_inter);
 		distance = getDistTwoPoints(inter_p, *p);
-		if (PointIsBetweenStartEnd(start, end, inter_p)) dist_arr[p->getId()] = distance;
+		if (PointIsBetweenStartEnd(start, end, inter_p)) distances[p->getId()] = distance;
 //		++itp;
 		++i;
 	}
 	cout << "All Point Distances gathered!\n";
-	sortDistArr(dist_arr, sortedIds);
+	sortDistArr(distances, sortedIds);
 	xClosestPoints(sortedIds, amountClosestPoints, start, end);
-	checkIsSorted(dist_arr, sortedIds);
+	checkIsSorted(distances, sortedIds);
 
 	saveCoords(points, sortedIds);
 	deletePoints(points);
@@ -387,22 +387,24 @@ class Point
 
 public class TraceRoute
 {
+	public static boolean DEBUG = false;
+
 	static private void print(String msg)
 	{
 		System.out.println(msg);
 	}
 	
-	static private void printDouble(String msg, double v)
+	static private void printDouble(final String msg, final double v)
 	{
 		print(msg + " " + Double.toString(v));
 	}
 	
-	static private void printInt(String msg, int v)
+	static private void printInt(final String msg, final int v)
 	{
 		print(msg + " " + Integer.toString(v));
 	} 
 	
-	private boolean checks(int amountPoints, int startIndex, int endIndex, int amountClosestPoints)
+	private boolean checks(final int amountPoints, final int startIndex, final int endIndex, final int amountClosestPoints)
 	{
 		boolean error;
 
@@ -417,7 +419,7 @@ public class TraceRoute
 		return (true);
 	}
 	
-	void genPoints(int amount, List<Point> points, int spread, Random random)
+	void genPoints(final int amount, List<Point> points, int spread, final Random random)
 	{
 		int i;
 
@@ -428,12 +430,12 @@ public class TraceRoute
 		print("Points generated!\n");
 	}
 	
-	Point getPointPos(List<Point> points, int id)
+	Point getPointPos(final List<Point> points, final int id)
 	{
 		return (points.get(id));
 	}
 	
-	double getLineEquation_a(Point p1, Point p2)
+	double getLineEquation_a(final Point p1, final Point p2)
 	{
 		double a;
 
@@ -441,7 +443,7 @@ public class TraceRoute
 		return (a);
 	}
 	
-	double getLineEquation_b(Point p1, Point p2)
+	double getLineEquation_b(final Point p1, final Point p2)
 	{
 		double a;
 		double b;
@@ -451,27 +453,31 @@ public class TraceRoute
 		return (b);
 	}
 	
-	double getOrthoLine_a_o(double a)
+	double getOrthoLine_a_o(final double _a)
 	{
+		double a;
 		double a_o;
 
+		a = _a;
 		if (a == 0) a = 0.001;
 		a_o = - 1 / a;
 		return (a_o);
 	}
 	
-	double getOrthoLine_b_o(double a, Point p1)
+	double getOrthoLine_b_o(final double _a, final Point p1)
 	{
+		double a;
 		double a_o;
 		double b_o;
 
+		a = _a;
 		if (a == 0) a = 0.001;
 		a_o = - 1 / a;
 		b_o = p1.getY() - a_o * p1.getX();
 		return (b_o);
 	}
 		
-	double getIntersectPoint_x_inter(double a, double b, double a_o, double b_o)
+	double getIntersectPoint_x_inter(final double a, final double b, final double a_o, final double b_o)
 	{
 		double div;
 		double x_inter;
@@ -482,7 +488,7 @@ public class TraceRoute
 		return (x_inter);
 	}
 	
-	double getIntersectPoint_y_inter(double a, double b, double a_o, double b_o)
+	double getIntersectPoint_y_inter(final double a, final double b, final double a_o, final double b_o)
 	{
 		double div;
 		double x_inter;
@@ -495,12 +501,12 @@ public class TraceRoute
 		return (y_inter);
 	}
 	
-	double getDistTwoPoints(Point p1, Point p2)
+	double getDistTwoPoints(final Point p1, final Point p2)
 	{
 		return (Math.sqrt(Math.pow(p2.getY() - p1.getY(), 2) + Math.pow(p2.getX() - p1.getX(), 2)));
 	}
 	
-	boolean	PointIsBetweenStartEnd(Point start, Point end, Point InterSectPoint)
+	boolean	PointIsBetweenStartEnd(final Point start, final Point end, final Point InterSectPoint)
 	{
 		double tmp;
 		double x_end;
@@ -521,9 +527,9 @@ public class TraceRoute
 		return (x_inter > x_start && x_inter < x_end);
 	}
 	
-	void	sortDistArr(Map<Integer, Double> dist_arr, List<Integer> sortedIds)
+	void	sortDistArr(final Map<Integer, Double> distances, List<Integer> sortedIds)
 	{
-		Map<Integer, Double> sortedMap = dist_arr.entrySet()
+		Map<Integer, Double> sortedMap = distances.entrySet()
     .stream()
     .sorted(Map.Entry.comparingByValue())
     .collect(Collectors.toMap(
@@ -534,12 +540,12 @@ public class TraceRoute
     ));
     
     sortedIds.clear();
-    sortedMap.forEach((k, v) -> System.out.println(k + " -> " + v));
+    if (DEBUG) sortedMap.forEach((k, v) -> System.out.println(k + " -> " + v));
     sortedMap.forEach((k, v) -> sortedIds.add(k));
 	print("Distances sorted!\n");
 	}
 	
-	void xClosestPoints(List<Integer> sortedIds, int _x, Point start, Point end)
+	void xClosestPoints(List<Integer> sortedIds, final int _x, final Point start, final Point end)
 	{
 		int	i;
 		int	x;
@@ -554,7 +560,7 @@ public class TraceRoute
 		print("All Closest Points gathered!\n");
 	}
 	
-	void checkIsSorted(Map<Integer, Double> dist_arr, List<Integer> sortedIds, int amountPoints)
+	void checkIsSorted(final Map<Integer, Double> distances, final List<Integer> sortedIds, final int amountPoints)
 	{
 		int i;
 		int k;
@@ -566,7 +572,7 @@ public class TraceRoute
 		while (++i < 1000)
 		{
 			try{
-			first = dist_arr.get(i);
+			first = distances.get(i);
 			break;
 			}
 			catch (Exception e)
@@ -578,7 +584,7 @@ public class TraceRoute
 		{
 			if (k == i) continue;
 			try{
-			test = dist_arr.get(k);
+			test = distances.get(k);
 			if (test > first)
 			{print("Error: Not Sorted.\n"); return ;}
 			}
@@ -599,6 +605,8 @@ public class TraceRoute
 		int		endIndex;
 		int		amountClosestPoints;
 		int		spread;
+		Point	end;
+		Point	start;
 		Random random;
 
 		print("TraceRoute working.");
@@ -615,25 +623,22 @@ public class TraceRoute
 		{return ;}
 
 		random = new Random();
-		List<Point> points_list = new ArrayList<>();
+		List<Point> points = new ArrayList<>();
 		List<Integer> sortedIds = new ArrayList<>();
-		genPoints(amountPoints, points_list, spread, random);
+		genPoints(amountPoints, points, spread, random);
 		
-		Point start = getPointPos(points_list, startIndex);
-		Point end = getPointPos(points_list, endIndex);
+		start = getPointPos(points, startIndex);
+		end = getPointPos(points, endIndex);
 		
 		a = getLineEquation_a(start, end);
 		b = getLineEquation_b(start, end);
 		
-		i = -1;
-		Map<Integer, Double> dist_arr = new HashMap<>();
-		while (++i < points_list.size())
-	//	while (itp != points.end())
+		Map<Integer, Double> distances = new HashMap<>();
+		for(Point p: points)
 		{
-			Point	p;
 			double	a_o;
 			double	b_o;
-			Point inter_p;
+			Point	inter_p;
 			double	x_inter;
 			double	y_inter;
 			double	distance;
@@ -644,9 +649,7 @@ public class TraceRoute
 			a_o = 0;
 			b_o = 0;
 			
-			if (points_list.get(i).getId() == start.getId() || points_list.get(i).getId() == end.getId()) continue;
-
-			p = getPointPos(points_list, i);
+			if (p.getId() == start.getId() || p.getId() == end.getId()) continue;
 			
 			a_o = getOrthoLine_a_o(a);
 			b_o = getOrthoLine_b_o(a, p);
@@ -654,13 +657,11 @@ public class TraceRoute
 			y_inter = getIntersectPoint_y_inter(a, b, a_o, b_o);
 			
 			inter_p = new Point(x_inter, y_inter);
-			
 			distance = getDistTwoPoints(inter_p, p);
-			
-			if (PointIsBetweenStartEnd(start, end, inter_p)) dist_arr.put(p.getId(), distance);
+			if (PointIsBetweenStartEnd(start, end, inter_p)) distances.put(p.getId(), distance);
 		}
 		print("All Point Distances gathered!\n");
-		sortDistArr(dist_arr, sortedIds);
+		sortDistArr(distances, sortedIds);
 		xClosestPoints(sortedIds, amountClosestPoints, start, end);
 	}
 	public static void main(String[] args)
