@@ -334,7 +334,7 @@ public class TraceRoute extends Application
 		
 		for (int i = 0; i < GRAPH_SPREAD; i++)
 		{	
-			if (i >= Math.min(startPoint.getX(), endPoint.getX()) && i <= Math.max(startPoint.getX(), endPoint.getX()))
+			if (i >= Math.min(startPoint.getX(), endPoint.getX()) && i <= Math.max(startPoint.getX(), endPoint.getX()) && (i % 100 == 0))
 				seriesLineStartEnd.getData().add(new XYChart.Data<>(i, line_a * i + line_b));
 		}
 		
@@ -378,7 +378,6 @@ public class TraceRoute extends Application
 		Point	start;
 		Random random;
 
-		print("TraceRoute working.");
 		if (args.length != 4){print("Usage: amountPoints startIndex endIndex amountClosestPoints Spread"); return ;}
 		try{
 		amountPoints = Integer.parseInt((args[0]));
@@ -443,10 +442,10 @@ public class TraceRoute extends Application
 		print("Done with Points, now time for the graph...");
 		launch(args);
 	}
+	
 	public static void main(String[] args)
 	{
-		TraceRoute tr = new TraceRoute();
-		
+		TraceRoute tr = new TraceRoute();	
 		tr.runTraceRoute(args);
 	}
 }
