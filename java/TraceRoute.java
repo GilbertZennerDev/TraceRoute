@@ -49,6 +49,8 @@ public class TraceRoute extends Application
 {
     private static double line_a;
     private static double line_b;
+    private static Point endPoint;
+    private static Point startPoint;
 	private static boolean DEBUG = false;
 	private static int GRAPH_SPREAD = 1000;
 	private static final int GRAPH_WIDTH = 1800;
@@ -57,11 +59,8 @@ public class TraceRoute extends Application
     private static List<Double> allPointsY = new ArrayList<>();
 	private static List<Double> closestPointsX = new ArrayList<>();
     private static List<Double> closestPointsY = new ArrayList<>();
-    private static Point startPoint;
-    private static Point endPoint;
 
-
-	static private void print(String msg)
+	static private void print(final String msg)
 	{
 		System.out.println(msg);
 	}
@@ -91,7 +90,7 @@ public class TraceRoute extends Application
 		return (true);
 	}
 	
-	void genPoints(final int amount, List<Point> points, int spread, final Random random)
+	void genPoints(final int amount, List<Point> points, final int spread, final Random random)
 	{
 		int i;
 
@@ -278,24 +277,20 @@ public class TraceRoute extends Application
 		print("SUCCESS: Is Sorted.\n");
 	}
 	
-	void savePoints(List<Integer> sortedIds, List<Point> points, String filename)
+	void savePoints(final List<Integer> sortedIds, final List<Point> points, final String filename)
 	{
 		if (filename == null || filename.length() == 0)
 			return ;
 
 		Point p;
 		StringBuilder sb;
-		StringBuilder pos;
-		
+
 		sb = new StringBuilder();
-		pos = new StringBuilder();
 		for (Integer i: sortedIds)
 		{
-			pos.setLength(0);	
 			p = points.get(i);
-			pos.append(Double.toString(p.getX())).append(" ").append(Double.toString(p.getY())).append("\n");
-			sb.append(pos.toString());
-		}		
+			sb.append(p.getX()).append(" ").append(p.getY()).append("\n");
+		}
 		try {
             Files.writeString(Paths.get(filename), sb.toString());
         } catch (Exception e) {
@@ -373,26 +368,25 @@ public class TraceRoute extends Application
 		double	a;
 		double	b;
 		int		i;
-		int		amountPoints;
-		int		startIndex;
-		int		endIndex;
-		int		amountClosestPoints;
 		int		spread;
+		int		endIndex;
+		int		startIndex;
+		int		amountPoints;
+		int		amountClosestPoints;
+		
 		Point	end;
 		Point	start;
 		Random random;
 
 		print("TraceRoute working.");
-		if (args.length != 5 && args.length != 6){print("Usage: amountPoints startIndex endIndex amountClosestPoints Spread"); return ;}
+		if (args.length != 4){print("Usage: amountPoints startIndex endIndex amountClosestPoints Spread"); return ;}
 		try{
 		amountPoints = Integer.parseInt((args[0]));
 		startIndex = Integer.parseInt((args[1]));
 		endIndex = Integer.parseInt((args[2]));
-		amountClosestPoints = Integer.parseInt((args[3]));
-		spread = Integer.parseInt((args[4]));
+		amountClosestPoints = (int) (.1 * amountPoints);//(.1 * Integer.parseInt((args[3])));
+		spread = Integer.parseInt((args[3]));
 		GRAPH_SPREAD = spread;
-		DEBUG = args.length == 6;
-		if (!checks(amountPoints, startIndex, endIndex, amountClosestPoints)) return ;
 		}
 		catch(Exception e)
 		{return ;}
@@ -402,9 +396,11 @@ public class TraceRoute extends Application
 		List<Integer> sortedIds = new ArrayList<>();
 		genPoints(amountPoints, points, spread, random);
 		
-		start = getPointPos(points, startIndex);
+		start = new Point(GRAPH_SPREAD * .1 , GRAPH_SPREAD * .1);
+		//start = getPointPos(points, startIndex);
 		startPoint = start;
-		end = getPointPos(points, endIndex);
+		end = new Point(GRAPH_SPREAD * .9 , GRAPH_SPREAD * .9);
+		//end = getPointPos(points, endIndex);
 		endPoint = end;
 		
 		a = getLineEquation_a(start, end);
