@@ -1,24 +1,23 @@
-import java.util.List;
-import java.util.Scanner;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.nio.file.Files;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import java.util.*;
+import java.util.Map;
+import java.util.List;
+import java.util.Scanner;
+import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.stream.Collectors;
 
-import javafx.application.Application; 
-import static javafx.application.Application.launch; 
 import javafx.scene.Group; 
 import javafx.scene.Scene; 
 import javafx.stage.Stage;
-import javafx.scene.chart.NumberAxis; 
-import javafx.scene.chart.ScatterChart; 
 import javafx.scene.chart.XYChart;
+import javafx.scene.chart.NumberAxis; 
+import javafx.application.Application;
+import javafx.scene.chart.ScatterChart; 
+import static javafx.application.Application.launch; 
 
 class Point
 {
@@ -48,16 +47,19 @@ class Point
 
 public class TraceRoute extends Application
 {
-	public static boolean DEBUG = false;
-	public static int GRAPH_SPREAD = 1000;
-	public static final int GRAPH_WIDTH = 1800;
-	public static final int GRAPH_HEIGHT = 900;
+    private static double line_a;
+    private static double line_b;
+	private static boolean DEBUG = false;
+	private static int GRAPH_SPREAD = 1000;
+	private static final int GRAPH_WIDTH = 1800;
+	private static final int GRAPH_HEIGHT = 900;
 	private static List<Double> allPointsX = new ArrayList<>();
     private static List<Double> allPointsY = new ArrayList<>();
 	private static List<Double> closestPointsX = new ArrayList<>();
     private static List<Double> closestPointsY = new ArrayList<>();
     private static Point startPoint;
     private static Point endPoint;
+
 
 	static private void print(String msg)
 	{
@@ -221,7 +223,7 @@ public class TraceRoute extends Application
 	print("Distances sorted!\n");
 	}
 	
-	void xClosestPoints(List<Point> points, List<Integer> sortedIds, final int _x, final Point start, final Point end)
+	void xClosestPoints(final List<Point> points, List<Integer> sortedIds, final int _x, final Point start, final Point end)
 	{
 		int	i;
 		int	x;
@@ -276,6 +278,31 @@ public class TraceRoute extends Application
 		print("SUCCESS: Is Sorted.\n");
 	}
 	
+	void savePoints(List<Integer> sortedIds, List<Point> points, String filename)
+	{
+		if (filename == null || filename.length() == 0)
+			return ;
+
+		Point p;
+		StringBuilder sb;
+		StringBuilder pos;
+		
+		sb = new StringBuilder();
+		pos = new StringBuilder();
+		for (Integer i: sortedIds)
+		{
+			pos.setLength(0);	
+			p = points.get(i);
+			pos.append(Double.toString(p.getX())).append(" ").append(Double.toString(p.getY())).append("\n");
+			sb.append(pos.toString());
+		}		
+		try {
+            Files.writeString(Paths.get(filename), sb.toString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+	}
+	
 	@Override 
 	public void start(Stage stage)
 	{
@@ -301,12 +328,20 @@ public class TraceRoute extends Application
 		
 		XYChart.Series<Number, Number> seriesStartAndEndPoints = new XYChart.Series<>();
 		//seriesAllPoints.setName("Start and End Points");
+		
+		XYChart.Series<Number, Number> seriesLineStartEnd = new XYChart.Series<>();
 
 		for (int i = 0; i < allPointsX.size(); i++)
 			seriesAllPoints.getData().add(new XYChart.Data<>(allPointsX.get(i), allPointsY.get(i)));
 			
 		for (int i = 0; i < closestPointsX.size(); i++)
 			seriesClosestPoints.getData().add(new XYChart.Data<>(closestPointsX.get(i), closestPointsY.get(i)));
+		
+		for (int i = 0; i < GRAPH_SPREAD; i++)
+		{	
+			if (i >= Math.min(startPoint.getX(), endPoint.getX()) && i <= Math.max(startPoint.getX(), endPoint.getX()))
+				seriesLineStartEnd.getData().add(new XYChart.Data<>(i, line_a * i + line_b));
+		}
 		
 		seriesStartAndEndPoints.getData().add(new XYChart.Data<>(startPoint.getX(), startPoint.getY()));
 		seriesStartAndEndPoints.getData().add(new XYChart.Data<>(endPoint.getX(), endPoint.getY()));
@@ -315,6 +350,7 @@ public class TraceRoute extends Application
 		scatterChart.getData().add(seriesAllPoints);
 		scatterChart.getData().add(seriesClosestPoints);
 		scatterChart.getData().add(seriesStartAndEndPoints);
+		scatterChart.getData().add(seriesLineStartEnd);
  
 		//Creating a Group object  
 		Group root = new Group(scatterChart); 
@@ -372,7 +408,9 @@ public class TraceRoute extends Application
 		endPoint = end;
 		
 		a = getLineEquation_a(start, end);
+		line_a = a;
 		b = getLineEquation_b(start, end);
+		line_b = b;
 		
 		Map<Integer, Double> distances = new HashMap<>();
 		for(Point p: points)
@@ -404,6 +442,9 @@ public class TraceRoute extends Application
 		print("All Point Distances gathered!\n");
 		sortDistArr(distances, sortedIds);
 		xClosestPoints(points, sortedIds, amountClosestPoints, start, end);
+		print("Now saving the Points...");		
+		savePoints(sortedIds, points, "PointsPositions.md");
+		print("Done with Points, now time for the graph...");
 		launch(args);
 	}
 	public static void main(String[] args)
