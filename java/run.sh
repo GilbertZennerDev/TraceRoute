@@ -1,1 +1,1 @@
-clear && java TraceRoute 200000 0 1 10 1000000
+clear && java --module-path javafx-sdk/lib --add-modules javafx.controls,javafx.fxml TraceRoute 1000 0 1 3 100
