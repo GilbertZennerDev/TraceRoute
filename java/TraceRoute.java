@@ -9,15 +9,24 @@ import java.util.Scanner;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javafx.scene.Group; 
 import javafx.scene.Scene; 
 import javafx.stage.Stage;
+import javafx.scene.paint.Color;
+import javafx.scene.canvas.Canvas;
 import javafx.scene.chart.XYChart;
 import javafx.scene.chart.NumberAxis; 
+import javafx.scene.layout.StackPane;
 import javafx.application.Application;
 import javafx.scene.chart.ScatterChart; 
-import static javafx.application.Application.launch; 
+import javafx.scene.canvas.GraphicsContext;
+import static javafx.application.Application.launch;
+
+
+
+
 
 class Point
 {
@@ -107,12 +116,12 @@ public class TraceRoute extends Application
 		print("Points generated!\n");
 	}
 	
-	Point getPointPos(final List<Point> points, final int id)
+	final Point getPointPos(final List<Point> points, final int id)
 	{
 		return (points.get(id));
 	}
 	
-	double getLineEquation_a(final Point p1, final Point p2)
+	final double getLineEquation_a(final Point p1, final Point p2)
 	{
 		double a;
 
@@ -120,7 +129,7 @@ public class TraceRoute extends Application
 		return (a);
 	}
 	
-	double getLineEquation_b(final Point p1, final Point p2)
+	final double getLineEquation_b(final Point p1, final Point p2)
 	{
 		double a;
 		double b;
@@ -130,7 +139,7 @@ public class TraceRoute extends Application
 		return (b);
 	}
 	
-	double getOrthoLine_a_o(final double _a)
+	final double getOrthoLine_a_o(final double _a)
 	{
 		double a;
 		double a_o;
@@ -141,7 +150,7 @@ public class TraceRoute extends Application
 		return (a_o);
 	}
 	
-	double getOrthoLine_b_o(final double _a, final Point p1)
+	final double getOrthoLine_b_o(final double _a, final Point p1)
 	{
 		double a;
 		double a_o;
@@ -154,7 +163,7 @@ public class TraceRoute extends Application
 		return (b_o);
 	}
 		
-	double getIntersectPoint_x_inter(final double a, final double b, final double a_o, final double b_o)
+	final double getIntersectPoint_x_inter(final double a, final double b, final double a_o, final double b_o)
 	{
 		double div;
 		double x_inter;
@@ -165,7 +174,7 @@ public class TraceRoute extends Application
 		return (x_inter);
 	}
 	
-	double getIntersectPoint_y_inter(final double a, final double b, final double a_o, final double b_o)
+	final double getIntersectPoint_y_inter(final double a, final double b, final double a_o, final double b_o)
 	{
 		double div;
 		double x_inter;
@@ -178,12 +187,12 @@ public class TraceRoute extends Application
 		return (y_inter);
 	}
 	
-	double getDistTwoPoints(final Point p1, final Point p2)
+	final double getDistTwoPoints(final Point p1, final Point p2)
 	{
-		return (Math.sqrt(Math.pow(p2.getY() - p1.getY(), 2) + Math.pow(p2.getX() - p1.getX(), 2)));
+		return ((p2.getY() - p1.getY()) * (p2.getY() - p1.getY()) + ((p2.getX() - p1.getX()) * (p2.getX() - p1.getX())));
 	}
 	
-	boolean	PointIsBetweenStartEnd(final Point start, final Point end, final Point InterSectPoint)
+	final boolean	PointIsBetweenStartEnd(final Point start, final Point end, final Point InterSectPoint)
 	{
 		double tmp;
 		double x_end;
@@ -206,20 +215,11 @@ public class TraceRoute extends Application
 	
 	void	sortDistArr(final Map<Integer, Double> distances, List<Integer> sortedIds)
 	{
-		Map<Integer, Double> sortedMap = distances.entrySet()
-    .stream()
-    .sorted(Map.Entry.comparingByValue())
-    .collect(Collectors.toMap(
-        Map.Entry::getKey,
-        Map.Entry::getValue,
-        (e1, e2) -> e1,
-        LinkedHashMap::new
-    ));
-    
-    sortedIds.clear();
-    if (DEBUG) sortedMap.forEach((k, v) -> System.out.println(k + " -> " + v));
-    sortedMap.forEach((k, v) -> sortedIds.add(k));
-	print("Distances sorted!\n");
+		sortedIds = distances.entrySet().parallelStream()
+		.sorted(Map.Entry.comparingByValue())
+		.map(Map.Entry::getKey)
+		.collect(Collectors.toList());
+		print("Distances sorted!\n");
 	}
 	
 	void xClosestPoints(final List<Point> points, List<Integer> sortedIds, final int _x, final Point start, final Point end)
@@ -299,69 +299,46 @@ public class TraceRoute extends Application
 	}
 	
 	@Override 
-	public void start(Stage stage)
-	{
-		NumberAxis xAxis = new NumberAxis(0, GRAPH_SPREAD, GRAPH_SPREAD / 10); 
-		xAxis.setLabel("X Coord");          
+	public void start(Stage stage) {
+		Canvas canvas = new Canvas(GRAPH_WIDTH, GRAPH_HEIGHT);
+		GraphicsContext gc = canvas.getGraphicsContext2D();
 
-		NumberAxis yAxis = new NumberAxis(0, GRAPH_SPREAD, GRAPH_SPREAD / 10); 
-		yAxis.setLabel("Y Coord"); 
+		// 1. Hintergrund (Dunkelgrau, damit man weiße/helle Punkte sieht)
+		gc.setFill(Color.web("#2c3e50"));
+		gc.fillRect(0, 0, GRAPH_WIDTH, GRAPH_HEIGHT);
 
-		//Creating the Scatter chart 
-		ScatterChart<Number, Number> scatterChart = 
-		new ScatterChart(xAxis, yAxis);
+		// 2. Skalierung berechnen
+		double scaleX = (double) GRAPH_WIDTH / GRAPH_SPREAD;
+		double scaleY = (double) GRAPH_HEIGHT / GRAPH_SPREAD;
 
-		scatterChart.setPrefWidth(GRAPH_WIDTH);  // Breet op 800 Pixel
-		scatterChart.setPrefHeight(GRAPH_HEIGHT); // Héicht op 600 Pixel
-
-		// 1. D'Series definéieren
-		XYChart.Series<Number, Number> seriesAllPoints = new XYChart.Series<>();
-		seriesAllPoints.setName("Map Points");
-		
-		XYChart.Series<Number, Number> seriesClosestPoints = new XYChart.Series<>();
-		//seriesAllPoints.setName("Closest Points");
-		
-		XYChart.Series<Number, Number> seriesStartAndEndPoints = new XYChart.Series<>();
-		//seriesAllPoints.setName("Start and End Points");
-		
-		XYChart.Series<Number, Number> seriesLineStartEnd = new XYChart.Series<>();
-
-		for (int i = 0; i < allPointsX.size(); i++)
-			seriesAllPoints.getData().add(new XYChart.Data<>(allPointsX.get(i), allPointsY.get(i)));
-			
-		for (int i = 0; i < closestPointsX.size(); i++)
-			seriesClosestPoints.getData().add(new XYChart.Data<>(closestPointsX.get(i), closestPointsY.get(i)));
-		
-		for (int i = 0; i < GRAPH_SPREAD; i++)
-		{	
-			if (i >= Math.min(startPoint.getX(), endPoint.getX()) && i <= Math.max(startPoint.getX(), endPoint.getX()) && (i % 100 == 0))
-				seriesLineStartEnd.getData().add(new XYChart.Data<>(i, line_a * i + line_b));
+		// 3. Alle Punkte (Kleine graue Punkte)
+		//gc.setFill(Color.LIGHTGRAY);
+		//gc.setGlobalAlpha(0.05); // Nur 5% Deckkraft
+		gc.setFill(Color.BLACK);
+		for (int i = 0; i < allPointsX.size(); i++) {
+			gc.fillOval(allPointsX.get(i) * scaleX, allPointsY.get(i) * scaleY, 1, 1);
 		}
-		
-		seriesStartAndEndPoints.getData().add(new XYChart.Data<>(startPoint.getX(), startPoint.getY()));
-		seriesStartAndEndPoints.getData().add(new XYChart.Data<>(endPoint.getX(), endPoint.getY()));
+		//gc.setGlobalAlpha(1.0);
 
-		// 3. D'Series dem Chart dobäiginn
-		scatterChart.getData().add(seriesAllPoints);
-		scatterChart.getData().add(seriesClosestPoints);
-		scatterChart.getData().add(seriesStartAndEndPoints);
-		scatterChart.getData().add(seriesLineStartEnd);
- 
-		//Creating a Group object  
-		Group root = new Group(scatterChart); 
- 
-		//Creating a scene object 
-		Scene scene = new Scene(root, GRAPH_WIDTH, GRAPH_HEIGHT);  
+		// 4. Closest Points (Gelb leuchtend)
+		gc.setFill(Color.RED);
+		for (int i = 0; i < closestPointsX.size(); i++) {
+			print("Printing closest Points");
+			gc.fillOval(closestPointsX.get(i) * scaleX, closestPointsY.get(i) * scaleY, 4, 4);
+		}
 
-		//Setting title to the Stage 
-		stage.setTitle("Scatter Chart"); 
- 
-		//Adding scene to the stage 
-		stage.setScene(scene); 
- 
-		//Displaying the contents of the stage 
+		// 5. Start (Grün) & Ende (Rot)
+		gc.setFill(Color.LIME);
+		gc.fillOval(startPoint.getX() * scaleX, startPoint.getY() * scaleY, 8, 8);
+		gc.setFill(Color.RED);
+		gc.fillOval(endPoint.getX() * scaleX, endPoint.getY() * scaleY, 8, 8);
+
+		StackPane root = new StackPane(canvas); // StackPane zentriert den Canvas automatisch
+		Scene scene = new Scene(root, GRAPH_WIDTH, GRAPH_HEIGHT);
+		stage.setTitle("TraceRoute Pathfinding Visualization");
+		stage.setScene(scene);
 		stage.show();
-	};
+	}
 	
 	public void runTraceRoute(String[] args)
 	{
@@ -409,6 +386,29 @@ public class TraceRoute extends Application
 		line_b = b;
 		
 		Map<Integer, Double> distances = new HashMap<>();
+		
+		/*
+		Map<Integer, Double> distances = points.parallelStream()
+    .filter(p -> p.getId() != start.getId() && p.getId() != end.getId())
+    .filter(p -> {
+        double a_o = getOrthoLine_a_o(line_a);
+        double b_o = getOrthoLine_b_o(line_a, p);
+        double x_inter = getIntersectPoint_x_inter(line_a, line_b, a_o, b_o);
+        double y_inter = getIntersectPoint_y_inter(line_a, line_b, a_o, b_o);
+        return PointIsBetweenStartEnd(start, end, new Point(x_inter, y_inter));
+    })
+    .collect(Collectors.toConcurrentMap(
+        Point::getId,
+        p -> {
+            double a_o = getOrthoLine_a_o(line_a);
+            double b_o = getOrthoLine_b_o(line_a, p);
+            double x_inter = getIntersectPoint_x_inter(line_a, line_b, a_o, b_o);
+            double y_inter = getIntersectPoint_y_inter(line_a, line_b, a_o, b_o);
+            return getDistTwoPoints(new Point(x_inter, y_inter), p);
+        }
+    ));
+		*/
+		
 		for(Point p: points)
 		{
 			double	a_o;
