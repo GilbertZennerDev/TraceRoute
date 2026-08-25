@@ -274,6 +274,85 @@ void saveCoords(const vector<Point *> &points, const vector<unsigned int> &sorte
 	outFile.close();
 }
 
+// Greedily walks a chain start -> p1 -> p2 -> ... -> pAmount -> end, picking
+// at each step the unused corridor candidate (dist_arr) whose REAL distance
+// to the current chain tip is closest to an even split of the direct
+// distance. This optimizes for the hops between the chosen points being
+// equal, not for the points being close to the line — a candidate further
+// off the line is picked if it keeps the step size even.
+void	buildEvenChain(const map<unsigned int, double> &dist_arr, const vector<Point *> &points,\
+const Point &start, const Point &end, const unsigned int amount, vector<unsigned int> &pathIds)
+{
+	unsigned int			k;
+	unsigned int			r;
+	unsigned int			bestIdx;
+	unsigned int			bestId;
+	double					target;
+	double					diff;
+	double					best;
+	const Point				*current;
+	vector<unsigned int>	remaining;
+	map<unsigned int, double>::const_iterator cit;
+
+	cit = dist_arr.begin();
+	while (cit != dist_arr.end())
+	{
+		remaining.push_back(cit->first);
+		++cit;
+	}
+
+	target = getDistTwoPoints(start, end) / (double) (amount + 1);
+	pathIds.clear();
+	current = &start;
+
+	k = -1;
+	while (++k < amount && remaining.size())
+	{
+		bestIdx = 0;
+		bestId = remaining[0];
+		best = numeric_limits<double>::max();
+		r = -1;
+		while (++r < remaining.size())
+		{
+			diff = fabs(getDistTwoPoints(*current, *getPointPos(points, remaining[r])) - target);
+			if (diff <= best)
+			{
+				best = diff;
+				bestId = remaining[r];
+				bestIdx = r;
+			}
+		}
+		pathIds.push_back(bestId);
+		current = getPointPos(points, bestId);
+		remaining.erase(remaining.begin() + bestIdx);
+	}
+	cout << "Even chain built!\n";
+}
+
+// Walks the ordered chain start -> p1 -> p2 -> ... -> pN -> end and sums
+// the real distance travelled, so it can be compared to the direct
+// (air-line) distance between start and end.
+double	getChainDistance(const vector<unsigned int> &pathIds, const vector<Point *> &points,\
+const Point &start, const Point &end)
+{
+	unsigned int	i;
+	double			total;
+	const Point		*prev;
+	const Point		*p;
+
+	total = 0;
+	prev = &start;
+	i = -1;
+	while (++i < pathIds.size())
+	{
+		p = getPointPos(points, pathIds[i]);
+		total += getDistTwoPoints(*prev, *p);
+		prev = p;
+	}
+	total += getDistTwoPoints(*prev, end);
+	return (total);
+}
+
 int main(int ac, char **av)
 {
 	int							i;
@@ -292,6 +371,9 @@ int main(int ac, char **av)
 	vector<Point *>				points;
 	map<unsigned int, double>	dist_arr;
 	vector<unsigned int>		sortedIds;
+	vector<unsigned int>		pathIds;
+	double						chainDistance;
+	double						directDistance;
 
 	if (ac != 6){cout << "Usage: " << av[0] << " amountPoints startIndex endIndex amountClosestPoints Spread"; exit(1);}
 
@@ -336,6 +418,27 @@ int main(int ac, char **av)
 	sortDistArr(dist_arr, sortedIds);
 	xClosestPoints(sortedIds, amountClosestPoints, start, end);
 	checkIsSorted(dist_arr, sortedIds);
+
+	buildEvenChain(dist_arr, points, start, end, amountClosestPoints, pathIds);
+	chainDistance = getChainDistance(pathIds, points, start, end);
+	directDistance = getDistTwoPoints(start, end);
+
+	cout << "Chain Hops (should be roughly even):\n";
+	{
+		const Point *prev = &start;
+		unsigned int j = -1;
+		while (++j < pathIds.size())
+		{
+			const Point *p = getPointPos(points, pathIds[j]);
+			cout << "  " << getDistTwoPoints(*prev, *p) << "\n";
+			prev = p;
+		}
+		cout << "  " << getDistTwoPoints(*prev, end) << " (-> end)\n";
+	}
+	cout << "Chain Distance: " << chainDistance << "\n";
+	cout << "Direct (Air-Line) Distance: " << directDistance << "\n";
+	cout << "Detour Factor: " << (chainDistance / directDistance) << "\n";
+	cout << "Diff: " << (chainDistance - directDistance) << "\n";
 
 	saveCoords(points, sortedIds);
 	deletePoints(points);

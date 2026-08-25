@@ -2,24 +2,172 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>TraceRoute</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TraceRoute — Energy-efficient routing without graph search</title>
+<meta name="description" content="TraceRoute finds a route between two points by drawing a straight line and picking the waypoints closest to it — no road graph, no Dijkstra, no A*. A lightweight navigation heuristic built in Python, C++ and Java.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-	<h1>TraceRoute</h1>
-	<p class="subtitle">Closest points to a trajectory</p>
 
-	<form id="form">
-		<label>Points <input type="number" id="amountPoints" value="200" min="2"></label>
-		<label>Start Index <input type="number" id="startIndex" value="0" min="0"></label>
-		<label>End Index <input type="number" id="endIndex" value="1" min="0"></label>
-		<label>Closest # <input type="number" id="amountClosestPoints" value="8" min="1"></label>
-		<label>Spread <input type="number" id="spread" value="500" min="10"></label>
-		<button type="submit">Run</button>
-	</form>
+	<div class="glow glow-a"></div>
+	<div class="glow glow-b"></div>
 
-	<canvas id="canvas" width="900" height="600"></canvas>
-	<p id="info"></p>
+	<header class="hero">
+		<nav>
+			<span class="brand"><span class="brand-dot"></span>TraceRoute</span>
+			<a class="nav-link" href="https://github.com/GilbertZennerDev/TraceRoute" target="_blank" rel="noopener">Source ↗</a>
+		</nav>
+
+		<div class="hero-copy">
+			<span class="eyebrow">A navigation heuristic, not a graph search</span>
+			<h1>Skip the road graph.<br><span class="accent">Draw the line instead.</span></h1>
+			<p class="lede">
+				Real navigation engines build a graph of every road and search it — Dijkstra, A*,
+				thousands of nodes evaluated per query. TraceRoute tries a cheaper idea: draw a
+				straight line from A to B, and pick whichever waypoints sit closest to it. No graph,
+				no search tree — just projections and a sort. Order-of-magnitude less computation
+				per route, which means less CPU time and less energy per query.
+			</p>
+			<div class="hero-cta">
+				<a href="#demo" class="btn btn-primary">Try the routing engine ↓</a>
+				<a href="#how" class="btn btn-ghost">See how it works</a>
+			</div>
+			<div class="stack-badges">
+				<span>Same routing logic, 3 languages:</span>
+				<span class="badge">🐍 Python</span>
+				<span class="badge">⚙️ C++</span>
+				<span class="badge">☕ Java + JavaFX</span>
+			</div>
+		</div>
+	</header>
+
+	<main>
+		<section id="demo" class="panel">
+			<div class="panel-head">
+				<h2>Try it as a router</h2>
+				<p>Think of the dots as waypoints — intersections, charging stations, delivery stops.
+				Pick a start and destination; the red dots are the ones your route would actually
+				pass near. Teal marks the origin, purple the destination.</p>
+			</div>
+
+			<div class="demo-grid">
+				<form id="form" class="controls">
+					<label>
+						<span>Points</span>
+						<input type="number" id="amountPoints" value="200" min="2" max="5000">
+					</label>
+					<label>
+						<span>Start index</span>
+						<input type="number" id="startIndex" value="0" min="0">
+					</label>
+					<label>
+						<span>End index</span>
+						<input type="number" id="endIndex" value="1" min="0">
+					</label>
+					<label>
+						<span>Closest #</span>
+						<input type="number" id="amountClosestPoints" value="8" min="1">
+					</label>
+					<label>
+						<span>Spread</span>
+						<input type="number" id="spread" value="500" min="10">
+					</label>
+					<button type="submit" class="btn btn-primary btn-block">
+						<span class="btn-label">Run TraceRoute</span>
+						<span class="btn-spinner" aria-hidden="true"></span>
+					</button>
+
+					<div class="stats" id="stats" hidden>
+						<div class="stat">
+							<span class="stat-value" id="statPoints">–</span>
+							<span class="stat-label">points generated</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statClosest">–</span>
+							<span class="stat-label">closest matches</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statDistance">–</span>
+							<span class="stat-label">direct distance</span>
+						</div>
+					</div>
+				</form>
+
+				<div class="canvas-wrap">
+					<canvas id="canvas" width="900" height="600"></canvas>
+					<p id="info" class="canvas-info"></p>
+				</div>
+			</div>
+		</section>
+
+		<section id="how" class="panel">
+			<div class="panel-head">
+				<h2>Why this is cheaper than a real router</h2>
+				<p>A production navigation engine searches a graph. TraceRoute replaces that search
+				with four constant-time geometry steps per waypoint — no traversal, no priority queue.</p>
+			</div>
+			<ol class="steps">
+				<li>
+					<span class="step-n">01</span>
+					<h3>Draw the direct line</h3>
+					<p>Instead of a road graph, TraceRoute starts from the one line every router already
+					knows: the straight shot from origin to destination.</p>
+				</li>
+				<li>
+					<span class="step-n">02</span>
+					<h3>Project each waypoint</h3>
+					<p>Every candidate point is dropped perpendicularly onto that line — one multiplication-heavy
+					step, no recursion, no queue.</p>
+				</li>
+				<li>
+					<span class="step-n">03</span>
+					<h3>Discard what's off-route</h3>
+					<p>Waypoints whose projection falls outside the origin–destination segment are dropped —
+					they'd be a detour, not a shortcut.</p>
+				</li>
+				<li>
+					<span class="step-n">04</span>
+					<h3>Rank by detour distance</h3>
+					<p>What's left is sorted by how far it sits off the direct line — the closest ones are
+					the cheapest real-world route to follow.</p>
+				</li>
+			</ol>
+		</section>
+
+		<section class="panel panel-compare">
+			<div class="panel-head">
+				<h2>Built for constrained hardware</h2>
+				<p>The same routing logic, tuned for three very different power budgets.</p>
+			</div>
+			<div class="compare-grid">
+				<div class="compare-card">
+					<h3>🐍 Python</h3>
+					<span class="tag">Prototype</span>
+					<p>Where the routing heuristic was proven out — <code>matplotlib</code> made every
+					projection error visible immediately.</p>
+				</div>
+				<div class="compare-card">
+					<h3>⚙️ C++</h3>
+					<span class="tag">Low-power target</span>
+					<p>Manual memory management, no runtime, no GC pauses — the profile you'd want on an
+					embedded or battery-powered device.</p>
+				</div>
+				<div class="compare-card">
+					<h3>☕ Java</h3>
+					<span class="tag">Production</span>
+					<p>Powers this demo's routing engine, plus a native JavaFX desktop visualizer for
+					inspecting routes offline.</p>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<footer>
+		<p>Built by Gilbert Zenner · <a href="https://github.com/GilbertZennerDev/TraceRoute" target="_blank" rel="noopener">View source on GitHub</a></p>
+	</footer>
 
 	<script src="script.js"></script>
 </body>

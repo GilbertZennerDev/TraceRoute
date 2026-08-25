@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 
 $ServerUser = "root"
 $ServerHost = "89.167.25.230"
-$ServerPath = "/opt/trace-route"
+$ServerPath = "/opt/TraceRoute"
 $ImageName  = "traceroute-app:latest"
 $TarFile    = "traceroute-app.tar"
 
