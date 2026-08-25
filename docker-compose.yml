@@ -1,23 +1,21 @@
 services:
-  app:
+  trace-route:
+    image: traceroute-app:latest
     build: ./webapp
     restart: unless-stopped
+    # No ports published — the shared edge Caddy on this Hetzner box
+    # reverse-proxies to this container by service name over the shared
+    # network below, same pattern as ../touch-me.
     expose:
       - "8000"
+    networks:
+      - default
+      - edge
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
-
-volumes:
-  caddy_data:
-  caddy_config:
+networks:
+  # The shared edge Caddy on this Hetzner box is feierblum-caddy-1, part of
+  # the feierblum-networking compose stack (confirmed via ../touch-me's
+  # docker-compose.yml, which resolved this the same way).
+  edge:
+    name: feierblum_default
+    external: true

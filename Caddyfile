@@ -1,3 +1,15 @@
+# NOT its own Caddy instance — this project shares the feierblum-networking
+# stack's existing Caddy container (feierblum-caddy-1) over the
+# "feierblum_default" network (see docker-compose.yml). Add this block to
+# that Caddy's Caddyfile (../feierblum-networking/Caddyfile) and reload it.
+
 trace-route.workflowsolved.com {
-	reverse_proxy app:8000
+	reverse_proxy trace-route:8000
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
 }
