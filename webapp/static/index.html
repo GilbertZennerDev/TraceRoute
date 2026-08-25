@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TraceRoute</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<h1>TraceRoute</h1>
+	<p class="subtitle">Closest points to a trajectory</p>
+
+	<form id="form">
+		<label>Points <input type="number" id="amountPoints" value="200" min="2"></label>
+		<label>Start Index <input type="number" id="startIndex" value="0" min="0"></label>
+		<label>End Index <input type="number" id="endIndex" value="1" min="0"></label>
+		<label>Closest # <input type="number" id="amountClosestPoints" value="8" min="1"></label>
+		<label>Spread <input type="number" id="spread" value="500" min="10"></label>
+		<button type="submit">Run</button>
+	</form>
+
+	<canvas id="canvas" width="900" height="600"></canvas>
+	<p id="info"></p>
+
+	<script src="script.js"></script>
+</body>
+</html>

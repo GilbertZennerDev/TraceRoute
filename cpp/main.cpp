@@ -137,14 +137,12 @@ bool	PointIsBetweenStartEnd(const Point &start, const Point &end, const Point &I
 
 void xClosestPoints(vector<unsigned int> &sortedIds, const unsigned int _x, const Point &start, const Point &end)
 {
-	int				i;
 	unsigned int	x;
 
-	i = -1;
-	if (x > sortedIds.size()) x = sortedIds.size();
+	if (_x > sortedIds.size()) x = sortedIds.size();
 	else x = _x;
 
-	sortedIds.erase(sortedIds.begin() + x - 1, sortedIds.end());
+	sortedIds.erase(sortedIds.begin() + x, sortedIds.end());
 	cout << "All Closest Points gathered!\n";
 }
 

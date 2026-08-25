@@ -215,10 +215,10 @@ public class TraceRoute extends Application
 	
 	void	sortDistArr(final Map<Integer, Double> distances, List<Integer> sortedIds)
 	{
-		sortedIds = distances.entrySet().parallelStream()
+		sortedIds.addAll(distances.entrySet().parallelStream()
 		.sorted(Map.Entry.comparingByValue())
 		.map(Map.Entry::getKey)
-		.collect(Collectors.toList());
+		.collect(Collectors.toList()));
 		print("Distances sorted!\n");
 	}
 	
