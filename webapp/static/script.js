@@ -1,6 +1,9 @@
 const form = document.getElementById("form");
 const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+// `let`, not `const` - drawOnto() below temporarily repoints this at an
+// offscreen context so the same terrain/icon/island helpers can render
+// either the visible canvas or the cached static layer.
+let ctx = canvas.getContext("2d");
 const info = document.getElementById("info");
 const clickStatus = document.getElementById("clickStatus");
 const stats = document.getElementById("stats");
@@ -35,6 +38,11 @@ function drawPreview() {
 	if (picked.end) drawCityIcon(picked.end.x * scaleX, picked.end.y * scaleY, 16, "#6c5ce7");
 }
 
+function stopFlowAnimation() {
+	if (flowAnimId) cancelAnimationFrame(flowAnimId);
+	flowAnimId = null;
+}
+
 canvas.addEventListener("click", (e) => {
 	const spread = Number(spreadInput.value) || 500;
 	const world = eventToWorld(e, spread);
@@ -43,12 +51,14 @@ canvas.addEventListener("click", (e) => {
 	} else {
 		picked.end = world;
 	}
+	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
 });
 
 spreadInput.addEventListener("change", () => {
 	picked = { start: null, end: null };
+	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
 });
@@ -207,51 +217,101 @@ function drawCityTexture(hull) {
 	}
 }
 
-function draw(data, spread) {
+// Static layer (terrain + islands) is expensive to redraw (thousands of
+// terrain cells + city texture per island) - rendered once per Run into an
+// offscreen canvas, then just blitted every animation frame so the bridge
+// "flow" animation stays cheap.
+const staticCanvas = document.createElement("canvas");
+staticCanvas.width = canvas.width;
+staticCanvas.height = canvas.height;
+const staticCtx = staticCanvas.getContext("2d");
+
+let flowAnimId = null;
+let flowData = null, flowScaleX = 1, flowScaleY = 1;
+
+function drawStaticLayer(data, spread) {
 	const scaleX = canvas.width / spread;
 	const scaleY = canvas.height / spread;
+	const sctx = staticCtx;
 
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
-	drawTerrain(spread);
+	sctx.clearRect(0, 0, staticCanvas.width, staticCanvas.height);
+	drawOnto(sctx, () => drawTerrain(spread));
 
 	if (data.islands && data.islands.length > 1) {
 		data.islands.forEach((ids, islandIdx) => {
 			const color = ISLAND_COLORS[islandIdx % ISLAND_COLORS.length];
 			const pts = ids.map(pid => data.points[pid]).filter(Boolean)
 				.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
-			if (pts.length >= 3) {
-				const hull = inflateHull(convexHull(pts), 22);
+			drawOnto(sctx, () => {
+				if (pts.length >= 3) {
+					const hull = inflateHull(convexHull(pts), 22);
 
-				ctx.save();
-				ctx.beginPath();
-				tracIslandShape(hull);
-				ctx.clip();
-				drawCityTexture(hull);
-				ctx.restore();
+					sctx.save();
+					sctx.beginPath();
+					tracIslandShape(hull);
+					sctx.clip();
+					drawCityTexture(hull);
+					sctx.restore();
 
-				ctx.beginPath();
-				tracIslandShape(hull);
-				ctx.fillStyle = color + "2e";
-				ctx.fill();
-				ctx.strokeStyle = color + "cc";
-				ctx.lineWidth = 2.5;
-				ctx.stroke();
-			}
-			for (const pid of ids) {
-				const p = data.points[pid];
-				if (p) drawCityIcon(p.x * scaleX, p.y * scaleY, 5.5, color);
-			}
+					sctx.beginPath();
+					tracIslandShape(hull);
+					sctx.fillStyle = color + "2e";
+					sctx.fill();
+					sctx.strokeStyle = color + "cc";
+					sctx.lineWidth = 2.5;
+					sctx.stroke();
+				}
+				for (const pid of ids) {
+					const p = data.points[pid];
+					if (p) drawCityIcon(p.x * scaleX, p.y * scaleY, 5.5, color);
+				}
+			});
 		});
 	} else {
-		for (const p of data.points) {
-			drawCityIcon(p.x * scaleX, p.y * scaleY, 6, "rgba(255, 255, 255, 0.8)");
-		}
+		drawOnto(sctx, () => {
+			for (const p of data.points) {
+				drawCityIcon(p.x * scaleX, p.y * scaleY, 6, "rgba(255, 255, 255, 0.8)");
+			}
+		});
 	}
+}
+
+// drawTerrain/drawCityIcon/drawCityTexture/tracIslandShape all draw through
+// the module-level `ctx` - this swaps it to a target context for the
+// duration of `fn`, so the same drawing code can target either the visible
+// canvas or the offscreen static layer without duplicating every helper.
+function drawOnto(target, fn) {
+	const prev = ctx;
+	ctx = target;
+	fn();
+	ctx = prev;
+}
+
+function draw(data, spread) {
+	flowData = data;
+	flowScaleX = canvas.width / spread;
+	flowScaleY = canvas.height / spread;
+	drawStaticLayer(data, spread);
+	if (flowAnimId) cancelAnimationFrame(flowAnimId);
+	animateFlow();
+}
+
+// Renders one frame: the cached static layer, plus the direct line, chain,
+// pins, and bridges - the bridges get an animated, marching dash in the
+// same yellow as the chain path so island crossings visually read as part
+// of the same continuous "flow" instead of a separate disconnected line.
+function renderFrame(dashOffset) {
+	const data = flowData, scaleX = flowScaleX, scaleY = flowScaleY;
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	ctx.drawImage(staticCanvas, 0, 0);
 
 	if (data.bridges) {
-		ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
-		ctx.lineWidth = 1.5;
-		ctx.setLineDash([4, 4]);
+		ctx.strokeStyle = "#ffd166";
+		ctx.shadowColor = "#ffd166";
+		ctx.shadowBlur = 6;
+		ctx.lineWidth = 2.5;
+		ctx.setLineDash([10, 8]);
+		ctx.lineDashOffset = -dashOffset;
 		for (const bridge of data.bridges) {
 			ctx.beginPath();
 			ctx.moveTo(bridge.a.x * scaleX, bridge.a.y * scaleY);
@@ -259,6 +319,8 @@ function draw(data, spread) {
 			ctx.stroke();
 		}
 		ctx.setLineDash([]);
+		ctx.lineDashOffset = 0;
+		ctx.shadowBlur = 0;
 	}
 
 	ctx.strokeStyle = "rgba(0, 217, 192, 0.35)";
@@ -295,6 +357,17 @@ function draw(data, spread) {
 	ctx.shadowBlur = 10;
 	drawCityIcon(data.end.x * scaleX, data.end.y * scaleY, 16, "#6c5ce7");
 	ctx.shadowBlur = 0;
+}
+
+function animateFlow() {
+	let start = null;
+	function step(ts) {
+		if (start === null) start = ts;
+		const dashOffset = ((ts - start) / 1000) * 24; // px/sec, matches the [10,8] dash pattern
+		renderFrame(dashOffset);
+		flowAnimId = requestAnimationFrame(step);
+	}
+	flowAnimId = requestAnimationFrame(step);
 }
 
 function setLoading(isLoading) {
