@@ -417,8 +417,8 @@
 		const pointById = new Map(data.points.map(p => [p.id, p]));
 		const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 		const dummy = new THREE.Object3D();
-		const step = Math.max(6, spread * 0.035);
-		const maxPerIsland = 55;
+		const step = Math.max(5, spread * 0.028);
+		const maxPerIsland = 75;
 
 		data.islands.forEach((ids, islandIdx) => {
 			const pts = ids.map(id => pointById.get(id)).filter(Boolean);
@@ -429,17 +429,27 @@
 			const minX = Math.min(...hull.map(p => p.x)), maxX = Math.max(...hull.map(p => p.x));
 			const minY = Math.min(...hull.map(p => p.y)), maxY = Math.max(...hull.map(p => p.y));
 
-			const spots = [];
+			// Collect EVERY valid grid cell across the whole footprint first,
+			// then randomly sample down to the cap - stopping early (as soon
+			// as the cap was hit) instead biased placement toward whichever
+			// corner the scan started from, clumping buildings in one part
+			// of the island instead of spreading across it (and over the
+			// route, which cuts through the island at an arbitrary angle).
+			let candidates = [];
 			for (let y = minY; y <= maxY; y += step) {
 				for (let x = minX; x <= maxX; x += step) {
 					if (!pointInPolygon(hull, x, y)) continue;
-					if (Math.random() > 0.72) continue; // organic gaps, not a solid grid
-					spots.push({ x, y });
-					if (spots.length >= maxPerIsland) break;
+					// Jitter within the cell so occupied spots don't look
+					// like a rigid grid.
+					candidates.push({ x: x + (Math.random() - 0.5) * step * 0.6, y: y + (Math.random() - 0.5) * step * 0.6 });
 				}
-				if (spots.length >= maxPerIsland) break;
 			}
-			if (!spots.length) return;
+			if (!candidates.length) return;
+			for (let i = candidates.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+			}
+			const spots = candidates.slice(0, maxPerIsland);
 
 			const mat = new THREE.MeshStandardMaterial({
 				color: ISLAND_COLORS[islandIdx % ISLAND_COLORS.length],
