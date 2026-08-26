@@ -131,10 +131,16 @@
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		renderer.shadowMap.enabled = true;
 		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-		if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
-		else renderer.outputEncoding = THREE.sRGBEncoding;
-		renderer.toneMapping = THREE.ACESFilmicToneMapping;
-		renderer.toneMappingExposure = 1.15;
+		// Deliberately NOT setting outputEncoding/toneMapping here: every
+		// color in this file (heightColor stops, ISLAND_COLORS, sky, water)
+		// is hand-tuned hex authored for a direct linear pass-through. This
+		// old three.js build (r128) has no automatic color-management, so
+		// turning on sRGB output encoding on top of those un-converted
+		// colors double-applies gamma and washes everything out to pale
+		// pastel - tried that, it looked wrong. Proper linear-workflow
+		// tone mapping would mean converting every color below via
+		// .convertSRGBToLinear() first; not worth the churn for a
+		// stylized/flat-shaded low-poly look like this one.
 		container.appendChild(renderer.domElement);
 		renderer.domElement.style.position = "relative";
 		renderer.domElement.style.zIndex = "1";
@@ -147,11 +153,15 @@
 		controls.maxDistance = 2000;
 		controls.maxPolarAngle = Math.PI * 0.49; // stop the camera from diving under the terrain
 
-		scene.add(new THREE.AmbientLight(0x8899bb, 0.55));
-		const fill = new THREE.HemisphereLight(0x2a3550, 0x0a0806, 0.5); // sky/ground bounce fill
+		// No tone mapping in this pipeline (see note above) - lights are
+		// kept at the original, lower intensities so nothing clips to flat
+		// white; a hemisphere fill adds gentle sky/ground bounce without
+		// pushing the total past what renders cleanly un-tone-mapped.
+		scene.add(new THREE.AmbientLight(0x8899bb, 0.6));
+		const fill = new THREE.HemisphereLight(0x2a3550, 0x0a0806, 0.3);
 		scene.add(fill);
 
-		sunLight = new THREE.DirectionalLight(0xfff3e0, 1.4);
+		sunLight = new THREE.DirectionalLight(0xfff3e0, 1.1);
 		sunLight.position.set(300, 520, 200);
 		sunLight.castShadow = true;
 		sunLight.shadow.mapSize.set(1536, 1536);
@@ -245,13 +255,14 @@
 		wire.rotation.x = -Math.PI / 2;
 		terrainGroup.add(wire);
 
-		// Translucent sea plane at a fixed low level - the lowest terrain
-		// colors (deep navy, see heightColor) sit at or below this, so
-		// valleys read as flooded/coastal instead of just "dark green".
-		const waterLevel = -maxH * 0.22;
+		// Translucent sea plane at a fixed low level - only the deepest
+		// valleys (bottom of the noise distribution's tail, not ~40% of the
+		// map) sit below this, so it reads as a few flooded lowlands/coastal
+		// pockets instead of the whole terrain looking submerged.
+		const waterLevel = -maxH * 0.55;
 		const waterGeo = new THREE.PlaneGeometry(spread * 1.6, spread * 1.6);
 		const waterMat = new THREE.MeshPhysicalMaterial({
-			color: 0x0d3b52, transparent: true, opacity: 0.55,
+			color: 0x0d3b52, transparent: true, opacity: 0.65,
 			roughness: 0.15, metalness: 0.1, side: THREE.DoubleSide,
 		});
 		waterMesh = new THREE.Mesh(waterGeo, waterMat);
