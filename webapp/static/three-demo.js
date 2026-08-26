@@ -33,10 +33,13 @@
 
 	function heightColor(h, maxH) {
 		const t = Math.max(0, Math.min(1, (h + maxH) / (2 * maxH)));
-		// low -> deep blue-teal, mid -> green, high -> pale rock
+		// low -> deep navy (sits under the water plane), through teal shore,
+		// green lowland, rock, up to a pale snow cap at the highest peaks -
+		// wider contrast than a flat low-poly gradient reads as "terrain",
+		// not "textured plane".
 		const stops = [
-			[0.05, 0.09, 0.16], [0.05, 0.25, 0.28], [0.15, 0.38, 0.22],
-			[0.45, 0.42, 0.28], [0.72, 0.70, 0.66],
+			[0.02, 0.04, 0.10], [0.06, 0.22, 0.30], [0.13, 0.36, 0.22],
+			[0.42, 0.40, 0.26], [0.55, 0.52, 0.48], [0.88, 0.89, 0.93],
 		];
 		const scaled = t * (stops.length - 1);
 		const i = Math.min(stops.length - 2, Math.floor(scaled));
@@ -45,8 +48,47 @@
 		return new THREE.Color(c[0], c[1], c[2]);
 	}
 
+	// Vertical sky gradient (dark zenith -> lit horizon) painted onto a huge
+	// inverted sphere, plus a static starfield - replaces the flat solid
+	// background color with something that reads as an actual sky instead
+	// of "canvas edge".
+	function buildSky() {
+		const skyGeo = new THREE.SphereGeometry(2400, 24, 16);
+		const pos = skyGeo.attributes.position;
+		const colors = [];
+		const top = new THREE.Color(0x04050a), horizon = new THREE.Color(0x1b2438), warmEdge = new THREE.Color(0x2a2035);
+		for (let i = 0; i < pos.count; i++) {
+			const y = pos.getY(i) / 2400; // -1 (down) .. 1 (up)
+			const t = Math.max(0, y);
+			const c = top.clone().lerp(horizon, 1 - t);
+			if (y < 0) c.lerp(warmEdge, Math.min(1, -y * 1.4));
+			colors.push(c.r, c.g, c.b);
+		}
+		skyGeo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+		const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+		return new THREE.Mesh(skyGeo, skyMat);
+	}
+
+	function buildStars() {
+		const count = 800;
+		const positions = new Float32Array(count * 3);
+		for (let i = 0; i < count; i++) {
+			const r = 1600 + Math.random() * 700;
+			const theta = Math.random() * Math.PI * 2;
+			const phi = Math.acos(Math.random() * 0.85); // keep mostly above horizon
+			positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+			positions[i * 3 + 1] = r * Math.cos(phi);
+			positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+		}
+		const geo = new THREE.BufferGeometry();
+		geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+		const mat = new THREE.PointsMaterial({ color: 0xcfe0ff, size: 2.4, sizeAttenuation: false, transparent: true, opacity: 0.8, fog: false });
+		return new THREE.Points(geo, mat);
+	}
+
 	let scene, camera, renderer, controls;
-	let terrainGroup, terrainMesh, pointsGroup, previewGroup;
+	let terrainGroup, terrainMesh, waterMesh, pointsGroup, previewGroup;
+	let routeCurve = null, flowMarker = null, flowStart = 0;
 	const raycaster = new THREE.Raycaster();
 	const mouseNDC = new THREE.Vector2();
 
@@ -71,10 +113,14 @@
 		}
 	}
 
+	let sunLight;
+
 	function initScene() {
 		scene = new THREE.Scene();
-		scene.background = new THREE.Color(0x0b0e14);
-		scene.fog = new THREE.Fog(0x0b0e14, 400, 1400);
+		scene.background = new THREE.Color(0x04050a); // fallback if the sky sphere ever fails to render
+		scene.fog = new THREE.FogExp2(0x0b0e14, 0.0011);
+		scene.add(buildSky());
+		scene.add(buildStars());
 
 		const w = container.clientWidth, h = container.clientHeight || w * 0.6667;
 		camera = new THREE.PerspectiveCamera(50, w / h, 1, 3000);
@@ -83,7 +129,15 @@
 		renderer = new THREE.WebGLRenderer({ antialias: true });
 		renderer.setSize(w, h);
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		renderer.shadowMap.enabled = true;
+		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+		if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
+		else renderer.outputEncoding = THREE.sRGBEncoding;
+		renderer.toneMapping = THREE.ACESFilmicToneMapping;
+		renderer.toneMappingExposure = 1.15;
 		container.appendChild(renderer.domElement);
+		renderer.domElement.style.position = "relative";
+		renderer.domElement.style.zIndex = "1";
 
 		controls = new THREE.OrbitControls(camera, renderer.domElement);
 		controls.target.set(0, 0, 0);
@@ -91,11 +145,19 @@
 		controls.dampingFactor = 0.08;
 		controls.minDistance = 100;
 		controls.maxDistance = 2000;
+		controls.maxPolarAngle = Math.PI * 0.49; // stop the camera from diving under the terrain
 
-		scene.add(new THREE.AmbientLight(0x8899bb, 0.7));
-		const sun = new THREE.DirectionalLight(0xfff3e0, 1.1);
-		sun.position.set(300, 500, 200);
-		scene.add(sun);
+		scene.add(new THREE.AmbientLight(0x8899bb, 0.55));
+		const fill = new THREE.HemisphereLight(0x2a3550, 0x0a0806, 0.5); // sky/ground bounce fill
+		scene.add(fill);
+
+		sunLight = new THREE.DirectionalLight(0xfff3e0, 1.4);
+		sunLight.position.set(300, 520, 200);
+		sunLight.castShadow = true;
+		sunLight.shadow.mapSize.set(1536, 1536);
+		sunLight.shadow.bias = -0.0015;
+		scene.add(sunLight);
+		scene.add(sunLight.target);
 
 		window.addEventListener("resize", onResize);
 
@@ -124,9 +186,15 @@
 		renderer.setSize(w, h);
 	}
 
+	const FLOW_DURATION_MS = 4500;
+
 	function animate() {
 		requestAnimationFrame(animate);
 		controls.update();
+		if (routeCurve && flowMarker) {
+			const t = ((performance.now() - flowStart) % FLOW_DURATION_MS) / FLOW_DURATION_MS;
+			flowMarker.position.copy(routeCurve.getPointAt(t));
+		}
 		renderer.render(scene, camera);
 	}
 
@@ -167,14 +235,43 @@
 		// No position offset: the geometry's local vertex range is already
 		// exactly [-spread/2, spread/2] on both axes, matching toScene()'s
 		// point mapping (sx = p.x - spread/2, sz = p.y - spread/2) 1:1.
-		const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
+		const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85, metalness: 0.05 });
 		terrainMesh = new THREE.Mesh(geo, mat);
 		terrainMesh.rotation.x = -Math.PI / 2;
+		terrainMesh.receiveShadow = true;
 		terrainGroup.add(terrainMesh);
 
-		const wire = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x1a2230, wireframe: true, transparent: true, opacity: 0.15 }));
+		const wire = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x1a2230, wireframe: true, transparent: true, opacity: 0.12 }));
 		wire.rotation.x = -Math.PI / 2;
 		terrainGroup.add(wire);
+
+		// Translucent sea plane at a fixed low level - the lowest terrain
+		// colors (deep navy, see heightColor) sit at or below this, so
+		// valleys read as flooded/coastal instead of just "dark green".
+		const waterLevel = -maxH * 0.22;
+		const waterGeo = new THREE.PlaneGeometry(spread * 1.6, spread * 1.6);
+		const waterMat = new THREE.MeshPhysicalMaterial({
+			color: 0x0d3b52, transparent: true, opacity: 0.55,
+			roughness: 0.15, metalness: 0.1, side: THREE.DoubleSide,
+		});
+		waterMesh = new THREE.Mesh(waterGeo, waterMat);
+		waterMesh.rotation.x = -Math.PI / 2;
+		waterMesh.position.y = waterLevel;
+		terrainGroup.add(waterMesh);
+
+		// Point the sun's shadow frustum at exactly this map's footprint -
+		// a fixed frustum either wastes resolution on a small map or clips
+		// shadows on a large one.
+		const half = spread * 0.75;
+		sunLight.position.set(spread * 0.55, Math.max(spread, 400), spread * 0.35);
+		sunLight.target.position.set(0, 0, 0);
+		sunLight.shadow.camera.left = -half;
+		sunLight.shadow.camera.right = half;
+		sunLight.shadow.camera.top = half;
+		sunLight.shadow.camera.bottom = -half;
+		sunLight.shadow.camera.near = 10;
+		sunLight.shadow.camera.far = spread * 3;
+		sunLight.shadow.camera.updateProjectionMatrix();
 
 		scene.add(terrainGroup);
 	}
@@ -308,7 +405,9 @@
 		const curve = new THREE.CatmullRomCurve3(chainPts);
 		const tubeGeo = new THREE.TubeGeometry(curve, Math.max(8, chainPts.length * 6), 2.2, 8, false);
 		const tubeMat = new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x664200, roughness: 0.4 });
-		pointsGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+		const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+		tubeMesh.castShadow = true;
+		pointsGroup.add(tubeMesh);
 
 		// Mandatory stops (client-placed) get a bigger amber sphere, same
 		// distinction the 2D demo draws with its pin icons.
@@ -321,16 +420,31 @@
 			const emissive = isStop ? 0x4a3000 : 0x4a0f1c;
 			const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive }));
 			m.position.copy(toScene(p, spread));
+			m.castShadow = true;
 			pointsGroup.add(m);
 		}
 
 		const startMesh = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 16), new THREE.MeshStandardMaterial({ color: 0x00d9c0, emissive: 0x004a40 }));
 		startMesh.position.copy(toScene(data.start, spread));
+		startMesh.castShadow = true;
 		pointsGroup.add(startMesh);
 
 		const endMesh = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 16), new THREE.MeshStandardMaterial({ color: 0x6c5ce7, emissive: 0x25184a }));
 		endMesh.position.copy(toScene(data.end, spread));
+		endMesh.castShadow = true;
 		pointsGroup.add(endMesh);
+
+		// A small glowing "packet" that continuously travels the route -
+		// makes the flight path read as an active flow, not a static
+		// painted line, and doubles as a clear visual indicator of travel
+		// direction (start -> end).
+		routeCurve = curve;
+		flowStart = performance.now();
+		const flowGeo = new THREE.SphereGeometry(4.2, 16, 16);
+		const flowMat = new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xffd166, emissiveIntensity: 1.4, roughness: 0.3 });
+		flowMarker = new THREE.Mesh(flowGeo, flowMat);
+		flowMarker.add(new THREE.PointLight(0xffd166, 1.2, 60, 2));
+		pointsGroup.add(flowMarker);
 
 		scene.add(pointsGroup);
 	}

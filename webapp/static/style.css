@@ -356,6 +356,7 @@ canvas.is-panning { cursor: grabbing; }
 }
 
 #three-container {
+	position: relative;
 	width: 100%;
 	aspect-ratio: 900 / 600;
 	background: var(--bg-elev);
