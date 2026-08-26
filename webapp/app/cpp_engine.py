@@ -31,6 +31,14 @@ class _TraceRouteResult(ctypes.Structure):
 		("detour_factor", ctypes.c_double),
 		("max_hop", ctypes.c_double),
 		("max_hop_satisfied", ctypes.c_int),
+		("island_count", ctypes.c_int),
+		("island_offsets", ctypes.POINTER(ctypes.c_int)),
+		("island_point_ids", ctypes.POINTER(ctypes.c_int)),
+		("bridge_count", ctypes.c_int),
+		("bridge_ax", ctypes.POINTER(ctypes.c_double)),
+		("bridge_ay", ctypes.POINTER(ctypes.c_double)),
+		("bridge_bx", ctypes.POINTER(ctypes.c_double)),
+		("bridge_by", ctypes.POINTER(ctypes.c_double)),
 	]
 
 
@@ -54,7 +62,7 @@ def is_available():
 	return _lib is not None
 
 
-def runTraceRouteCpp(amountPoints, spread, maxHopDistance=200, start=None, end=None):
+def runTraceRouteCpp(amountPoints, spread, maxHopDistance=20, start=None, end=None):
 	_load()
 	if _lib is None:
 		raise RuntimeError(f"C++ engine not available: {_load_error}")
@@ -66,6 +74,17 @@ def runTraceRouteCpp(amountPoints, spread, maxHopDistance=200, start=None, end=N
 	try:
 		points = [{'id': i, 'x': res.points_x[i], 'y': res.points_y[i]} for i in range(res.point_count)]
 		chain = [{'x': res.chain_x[i], 'y': res.chain_y[i]} for i in range(res.chain_count)]
+
+		islands = []
+		for i in range(res.island_count):
+			lo, hi = res.island_offsets[i], res.island_offsets[i + 1]
+			islands.append([res.island_point_ids[j] for j in range(lo, hi)])
+
+		bridges = [
+			{'a': {'x': res.bridge_ax[i], 'y': res.bridge_ay[i]}, 'b': {'x': res.bridge_bx[i], 'y': res.bridge_by[i]}}
+			for i in range(res.bridge_count)
+		]
+
 		return {
 			'points': points,
 			'start': {'x': res.start_x, 'y': res.start_y},
@@ -77,6 +96,8 @@ def runTraceRouteCpp(amountPoints, spread, maxHopDistance=200, start=None, end=N
 			'detour_factor': res.detour_factor,
 			'max_hop': res.max_hop,
 			'max_hop_satisfied': bool(res.max_hop_satisfied),
+			'islands': islands,
+			'bridges': bridges,
 			'engine': 'cpp',
 		}
 	finally:
