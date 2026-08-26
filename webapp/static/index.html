@@ -9,6 +9,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/simplex-noise@2.4.0/simplex-noise.js"></script>
 </head>
 <body>
 
@@ -18,7 +21,10 @@
 	<header class="hero">
 		<nav>
 			<span class="brand"><span class="brand-dot"></span>TraceRoute</span>
-			<a class="nav-link" href="https://github.com/GilbertZennerDev/TraceRoute" target="_blank" rel="noopener">Source ↗</a>
+			<div class="nav-links">
+				<a class="nav-link" href="https://github.com/GilbertZennerDev/TraceRoute" target="_blank" rel="noopener">Source ↗</a>
+				<a class="nav-link nav-cta" href="#enterprise">For teams ↓</a>
+			</div>
 		</nav>
 
 		<div class="hero-copy">
@@ -49,8 +55,16 @@
 			<div class="panel-head">
 				<h2>Try it as a router</h2>
 				<p>Think of the dots as waypoints — intersections, charging stations, delivery stops.
-				Pick a start and destination; the red dots are the ones your route would actually
-				pass near. Teal marks the origin, purple the destination.</p>
+				<strong style="color:#00d9c0">Click the map to set the origin</strong>, then
+				<strong style="color:#6c5ce7">click again to set the destination</strong>. The
+				<strong style="color:#ff5f7e">🔴 red points</strong> are the route TraceRoute picked,
+				connected by the <strong style="color:#ffd166">🟡 yellow path</strong> it would actually
+				follow. You don't pick how many stops to use — set the one thing that actually matters
+				(say, 200km max between fuel/delivery stops) and TraceRoute finds the fewest, straightest
+				stops that keep every single leg under that limit. The map itself is split into
+				colored <strong>islands</strong> (dense clusters, like boroughs), joined only by the
+				single closest <strong>bridge</strong> point-pair between them (dashed lines) — the fast
+				routing only ever runs inside one island at a time, crossing is just a lookup.</p>
 			</div>
 
 			<div class="demo-grid">
@@ -60,20 +74,19 @@
 						<input type="number" id="amountPoints" value="200" min="2" max="5000">
 					</label>
 					<label>
-						<span>Start index</span>
-						<input type="number" id="startIndex" value="0" min="0">
-					</label>
-					<label>
-						<span>End index</span>
-						<input type="number" id="endIndex" value="1" min="0">
-					</label>
-					<label>
-						<span>Closest #</span>
-						<input type="number" id="amountClosestPoints" value="8" min="1">
-					</label>
-					<label>
-						<span>Spread</span>
+						<span>Map size (km)</span>
 						<input type="number" id="spread" value="500" min="10">
+					</label>
+					<label>
+						<span>Max distance between stops (km)</span>
+						<input type="number" id="maxHopDistance" value="200" min="1">
+					</label>
+					<label>
+						<span>Engine</span>
+						<select id="engine">
+							<option value="python" selected>🐍 Python (islands)</option>
+							<option value="cpp">⚙️ C++ (flat corridor, no islands yet)</option>
+						</select>
 					</label>
 					<button type="submit" class="btn btn-primary btn-block">
 						<span class="btn-label">Run TraceRoute</span>
@@ -87,17 +100,34 @@
 						</div>
 						<div class="stat">
 							<span class="stat-value" id="statClosest">–</span>
-							<span class="stat-label">closest matches</span>
+							<span class="stat-label">stops used</span>
 						</div>
 						<div class="stat">
 							<span class="stat-value" id="statDistance">–</span>
 							<span class="stat-label">direct distance</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statChain">–</span>
+							<span class="stat-label">chain distance</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statDetour">–</span>
+							<span class="stat-label">detour factor</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statMaxHop">–</span>
+							<span class="stat-label">longest leg</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statIslands">–</span>
+							<span class="stat-label">islands crossed</span>
 						</div>
 					</div>
 				</form>
 
 				<div class="canvas-wrap">
 					<canvas id="canvas" width="900" height="600"></canvas>
+					<p id="clickStatus" class="canvas-info">📍 Click the map to set the origin</p>
 					<p id="info" class="canvas-info"></p>
 				</div>
 			</div>
@@ -137,6 +167,39 @@
 			</ol>
 		</section>
 
+		<section id="demo3d" class="panel">
+			<div class="panel-head">
+				<span class="eyebrow">Same math, one more axis</span>
+				<h2>It works in 3D too</h2>
+				<p>The projection math is just vector dot-products — it doesn't care how many coordinates
+				a point has. Here the same corridor-filter-and-chain logic runs over <code>(x, y, z)</code>
+				waypoints, flown over generated terrain so altitude actually reads visually.
+				Drag to orbit, scroll to zoom.</p>
+			</div>
+
+			<div class="demo-grid">
+				<form id="form3d" class="controls">
+					<label>
+						<span>Points</span>
+						<input type="number" id="amountPoints3d" value="150" min="2" max="1000">
+					</label>
+					<label>
+						<span>Spread</span>
+						<input type="number" id="spread3d" value="500" min="10">
+					</label>
+					<button type="submit" class="btn btn-primary btn-block">
+						<span class="btn-label">Fly the route</span>
+						<span class="btn-spinner" aria-hidden="true"></span>
+					</button>
+				</form>
+
+				<div class="canvas-wrap">
+					<div id="three-container"></div>
+					<p id="info3d" class="canvas-info"></p>
+				</div>
+			</div>
+		</section>
+
 		<section class="panel panel-compare">
 			<div class="panel-head">
 				<h2>Built for constrained hardware</h2>
@@ -163,6 +226,57 @@
 				</div>
 			</div>
 		</section>
+
+		<section id="enterprise" class="panel panel-enterprise">
+			<div class="panel-head">
+				<span class="eyebrow">For engineering teams evaluating routing</span>
+				<h2>Bring TraceRoute into your product</h2>
+				<p>Early-stage and looking for design partners — teams with a real constrained-hardware
+				routing problem who want to pressure-test this approach against their own data and
+				hardware. Not a finished drop-in SDK yet; a serious algorithm worth a technical
+				conversation.</p>
+			</div>
+
+			<div class="compare-grid">
+				<div class="compare-card">
+					<h3>🚁 Drone &amp; fleet routing</h3>
+					<span class="tag">Open terrain</span>
+					<p>Waypoint planning for swarms or delivery drones where the flight corridor is mostly
+					open and full graph search is dead weight on the flight controller.</p>
+				</div>
+				<div class="compare-card">
+					<h3>📦 Last-mile &amp; logistics</h3>
+					<span class="tag">High throughput</span>
+					<p>Thousands of rough routes computed per second on modest hardware, where "good
+					enough, instantly" beats "optimal, eventually."</p>
+				</div>
+				<div class="compare-card">
+					<h3>🔋 Embedded &amp; IoT trackers</h3>
+					<span class="tag">Low power</span>
+					<p>Asset trackers and battery-powered devices that can't afford the RAM or CPU cycles
+					a graph-based router needs.</p>
+				</div>
+			</div>
+
+			<div class="honesty-box">
+				<h3>What's proven, what isn't</h3>
+				<ul>
+					<li><strong>Proven:</strong> the core geometry — projection, corridor filtering,
+					even-chain construction — runs correctly and reproducibly in Python, C++ and Java,
+					with <span class="accent-inline">O(n)</span> work per query and no graph in memory.</li>
+					<li><strong>Not yet proven:</strong> real-world routing accuracy against actual road/obstacle
+					data, and measured CPU/RAM numbers against Dijkstra/A* on target hardware. That's exactly
+					what a design partnership would establish together, on your data.</li>
+				</ul>
+			</div>
+
+			<div class="enterprise-cta">
+				<a href="mailto:zennergilbert@gmail.com?subject=TraceRoute%20-%20technical%20walkthrough" class="btn btn-primary">
+					Request a technical walkthrough ✉️
+				</a>
+				<span class="enterprise-note">Straight to the author — Gilbert Zenner. No sales team, no funnel.</span>
+			</div>
+		</section>
 	</main>
 
 	<footer>
@@ -170,5 +284,6 @@
 	</footer>
 
 	<script src="script.js"></script>
+	<script src="three-demo.js"></script>
 </body>
 </html>

@@ -1,0 +1,55 @@
+{
+  "platform": "Windows-10-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+  "python": "3.10.11",
+  "results": [
+    {
+      "n": 100,
+      "traceroute_ms": 3.8831,
+      "traceroute_kb": 113.0,
+      "dijkstra_ms": 0.1398,
+      "dijkstra_kb": 6.8,
+      "speedup": 0.0
+    },
+    {
+      "n": 500,
+      "traceroute_ms": 23.5994,
+      "traceroute_kb": 538.5,
+      "dijkstra_ms": 0.6757,
+      "dijkstra_kb": 23.9,
+      "speedup": 0.0
+    },
+    {
+      "n": 1000,
+      "traceroute_ms": 56.149,
+      "traceroute_kb": 1103.7,
+      "dijkstra_ms": 0.1449,
+      "dijkstra_kb": 20.0,
+      "speedup": 0.0
+    },
+    {
+      "n": 2500,
+      "traceroute_ms": 216.2558,
+      "traceroute_kb": 2784.7,
+      "dijkstra_ms": 4.9604,
+      "dijkstra_kb": 99.7,
+      "speedup": 0.0
+    },
+    {
+      "n": 5000,
+      "traceroute_ms": 728.0933,
+      "traceroute_kb": 5601.8,
+      "dijkstra_ms": 7.9432,
+      "dijkstra_kb": 142.8,
+      "speedup": 0.0
+    },
+    {
+      "n": 10000,
+      "traceroute_ms": 2702.9714,
+      "traceroute_kb": 11241.4,
+      "dijkstra_ms": 5.6438,
+      "dijkstra_kb": 211.7,
+      "speedup": 0.0
+    }
+  ]
+}

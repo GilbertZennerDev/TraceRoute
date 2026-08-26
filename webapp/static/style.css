@@ -76,6 +76,12 @@ nav {
 	box-shadow: 0 0 16px var(--accent);
 }
 
+.nav-links {
+	display: flex;
+	align-items: center;
+	gap: 1.5rem;
+}
+
 .nav-link {
 	color: var(--text-dim);
 	text-decoration: none;
@@ -83,6 +89,12 @@ nav {
 	transition: color 0.2s;
 }
 .nav-link:hover { color: var(--text); }
+
+.nav-cta {
+	color: var(--accent-2);
+	font-weight: 600;
+}
+.nav-cta:hover { color: var(--text); }
 
 .eyebrow {
 	display: inline-block;
@@ -219,7 +231,7 @@ main {
 	color: var(--text-dim);
 }
 
-.controls input {
+.controls input, .controls select {
 	background: var(--bg-elev);
 	border: 1px solid var(--panel-border);
 	border-radius: 8px;
@@ -228,7 +240,7 @@ main {
 	font-family: var(--mono);
 	font-size: 0.9rem;
 }
-.controls input:focus {
+.controls input:focus, .controls select:focus {
 	outline: none;
 	border-color: var(--accent);
 	box-shadow: 0 0 0 3px rgba(108,92,231,0.25);
@@ -275,7 +287,20 @@ canvas {
 	border-radius: 10px;
 	border: 1px solid var(--panel-border);
 	display: block;
+	cursor: crosshair;
 }
+
+#three-container {
+	width: 100%;
+	aspect-ratio: 900 / 600;
+	background: var(--bg-elev);
+	border-radius: 10px;
+	border: 1px solid var(--panel-border);
+	overflow: hidden;
+	cursor: grab;
+}
+#three-container:active { cursor: grabbing; }
+#three-container canvas { display: block; width: 100% !important; height: 100% !important; }
 
 .canvas-info {
 	margin: 0.7rem 0 0;
@@ -349,6 +374,55 @@ canvas {
 	padding: 0.1rem 0.35rem;
 	border-radius: 4px;
 	font-size: 0.85em;
+}
+
+/* ---------- Enterprise ---------- */
+
+.panel-enterprise .compare-grid { margin-bottom: 1.75rem; }
+
+.accent-inline {
+	font-family: var(--mono);
+	color: var(--accent-2);
+}
+
+.honesty-box {
+	background: rgba(255,255,255,0.02);
+	border: 1px dashed var(--panel-border);
+	border-radius: var(--radius);
+	padding: 1.5rem;
+	margin-bottom: 2rem;
+}
+.honesty-box h3 {
+	margin: 0 0 0.9rem;
+	font-size: 1rem;
+	color: var(--text-dim);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+.honesty-box ul {
+	margin: 0;
+	padding: 0 0 0 1.1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.7rem;
+}
+.honesty-box li {
+	color: var(--text-dim);
+	font-size: 0.92rem;
+	line-height: 1.6;
+}
+.honesty-box strong { color: var(--text); }
+
+.enterprise-cta {
+	display: flex;
+	align-items: center;
+	gap: 1.2rem;
+	flex-wrap: wrap;
+}
+
+.enterprise-note {
+	font-size: 0.85rem;
+	color: var(--text-faint);
 }
 
 /* ---------- Footer ---------- */

@@ -5,7 +5,9 @@ returns plain data instead so it can be served over HTTP.
 """
 
 import random as r
+import heapq
 from math import sqrt as sqrt
+from math import acos as acos
 
 
 def genPoints(amount, spread):
@@ -62,28 +64,130 @@ def xClosestPoints(sortedPoints, x, intersect_arr, start, end):
 	arr = cleanSortedPoints[:x]
 	return arr
 
-def checks(amountPoints, startIndex, endIndex, amountClosestPoints):
-	error = False
-	if amountPoints < 2: error = True
-	if startIndex < 0 or startIndex > amountPoints - 1: error = True
-	if endIndex < 0 or endIndex > amountPoints - 1: error = True
-	if amountClosestPoints < 1 or amountClosestPoints > amountPoints: error = True
-	if startIndex == endIndex: error = True
-	if error: raise ValueError("Bad Args")
+def buildEvenChain(candidateIds, points, start, end, amount):
+	"""
+	Greedily walks a chain start -> p1 -> p2 -> ... -> pAmount -> end,
+	picking at each step the unused corridor candidate whose REAL distance
+	to the current chain tip is closest to an even split of the direct
+	distance. Optimizes for the hops between chosen points being equal,
+	not for the points being close to the line - a candidate further off
+	the line is picked if it keeps the step size even.
 
+	Restricted to candidates that are actually closer to `end` than the
+	current chain tip is - forward progress alone still allows wide
+	sideways swings though, so each candidate is additionally scored by
+	how closely its direction from the current tip matches the straight
+	direction to `end` (heading angle), with the even-hop-length match
+	only as a secondary tiebreaker - this keeps the chain as straight as
+	possible while still filling gaps roughly evenly.
+	"""
+	remaining = list(candidateIds)
+	target = getDistTwoPoints(start, end) / (amount + 1)
+	pathIds = []
+	current = start
+	for _ in range(amount):
+		if not remaining: break
+		distToEndNow = getDistTwoPoints(current, end)
+		forward = [cid for cid in remaining if getDistTwoPoints(getPointPos(points, cid), end) < distToEndNow]
+		pool = forward if forward else remaining
 
-def runTraceRoute(amountPoints, startIndex, endIndex, amountClosestPoints, spread):
-	checks(amountPoints, startIndex, endIndex, amountClosestPoints)
+		dx1 = end['x'] - current['x']
+		dy1 = end['y'] - current['y']
+		mag1 = sqrt(dx1 ** 2 + dy1 ** 2)
 
-	points = genPoints(amountPoints, spread)
-	start = {'id': 0, 'x': 0, 'y': 0}
-	end = {'id': 1, 'x': spread, 'y': spread}
+		best_id = None
+		best_score = float('inf')
+		for cand_id in pool:
+			cand = getPointPos(points, cand_id)
+			dx2 = cand['x'] - current['x']
+			dy2 = cand['y'] - current['y']
+			mag2 = sqrt(dx2 ** 2 + dy2 ** 2)
+			if mag1 == 0 or mag2 == 0: continue
+			cos_angle = max(-1.0, min(1.0, (dx1 * dx2 + dy1 * dy2) / (mag1 * mag2)))
+			heading_angle = acos(cos_angle)
+			hop_diff = abs(mag2 - target) / target if target else 0
+			score = heading_angle + 0.4 * hop_diff
+			if score <= best_score:
+				best_score = score
+				best_id = cand_id
+		if best_id is None: best_id = pool[0]
 
-	rest = [p for p in points if p['id'] != startIndex and p['id'] != endIndex]
+		pathIds.append(best_id)
+		current = getPointPos(points, best_id)
+		remaining.remove(best_id)
+	return pathIds
+
+def getChainDistance(pathIds, points, start, end):
+	total = 0
+	prev = start
+	for pid in pathIds:
+		p = getPointPos(points, pid)
+		total += getDistTwoPoints(prev, p)
+		prev = p
+	total += getDistTwoPoints(prev, end)
+	return total
+
+def getMaxHop(chainIds, points, start, end):
+	hops = [start] + [getPointPos(points, cid) for cid in chainIds] + [end]
+	return max(getDistTwoPoints(hops[i], hops[i + 1]) for i in range(len(hops) - 1))
+
+def findChainWithMaxHop(candidateIds, points, start, end, maxHopDistance, amountCap=60):
+	"""
+	The client doesn't pick a waypoint count - they pick the one thing
+	that actually matters to them (e.g. "max 200km between stops", so a
+	truck can refuel/deliver along the way). This tries chain lengths from
+	0 upward and returns the FIRST (i.e. shortest/straightest) one where
+	every single hop - start to waypoint, waypoint to waypoint, waypoint
+	to end - is within maxHopDistance.
+
+	How far it searches scales with how many stops a tight maxHopDistance
+	could plausibly require (directDistance / maxHopDistance), not a fixed
+	guess - a fixed cap like 30 silently fails (and produces a chaotic
+	worst-case chain, see below) as soon as a request needs more stops
+	than that, which a small maxHopDistance on a big map does immediately.
+
+	If nothing up to that search width manages to satisfy the constraint
+	(corridor too sparse, or maxHopDistance too small even for the search
+	width), it returns the BEST attempt seen - the one with the smallest
+	max_hop across every amount tried, not just the last one - with
+	satisfied=False, so a genuinely infeasible request still gets the
+	least-bad chain instead of whatever the final, most-constrained
+	attempt happened to produce.
+	"""
+	directDistance = getDistTwoPoints(start, end)
+	needed = int(directDistance // maxHopDistance) + 2 if maxHopDistance > 0 else amountCap
+	maxAmount = min(len(candidateIds), amountCap, max(needed, 1))
+
+	bestFallback = None
+	for amount in range(0, maxAmount + 1):
+		chainIds = buildEvenChain(candidateIds, points, start, end, amount) if amount > 0 else []
+		maxHop = getMaxHop(chainIds, points, start, end)
+		chainDistance = getChainDistance(chainIds, points, start, end)
+		detourFactor = chainDistance / directDistance if directDistance else float('inf')
+		result = {
+			'chainIds': chainIds, 'chain_distance': chainDistance,
+			'detour_factor': detourFactor, 'max_hop': maxHop,
+		}
+		if maxHop <= maxHopDistance:
+			result['satisfied'] = True
+			return result
+		if bestFallback is None or maxHop < bestFallback['max_hop'] - 1e-9:
+			bestFallback = result
+
+	if bestFallback is not None:
+		bestFallback['satisfied'] = False
+	return bestFallback
+
+def buildCorridorIds(points, candidateIds, start, end):
+	"""Filters candidateIds down to the ones whose orthogonal projection
+	onto the start->end line actually falls between them - the same
+	filter runTraceRoute always used, pulled out so it can be reused for
+	a whole map OR scoped to a single island's points (see below)."""
 	a, b = getLineEquation(start, end)
 	dist_arr = []
 	intersect_arr = []
-	for p in rest:
+	for pid in candidateIds:
+		p = points[pid]
 		a_o, b_o = getOrthoLine(a, p)
 		x_inter, y_inter = getIntersectPoint(a, b, a_o, b_o)
 		p1 = {'x': x_inter, 'y': y_inter}
@@ -91,27 +195,201 @@ def runTraceRoute(amountPoints, startIndex, endIndex, amountClosestPoints, sprea
 		distance = getDistTwoPoints(p1, p)
 		dist_arr.append({'id': p['id'], 'distance': round(distance, 0)})
 	dist_arr_sorted = sorted(dist_arr, key=lambda x: x['distance'])
+	corridorPoints = xClosestPoints(dist_arr_sorted, len(dist_arr_sorted), intersect_arr, start, end)
+	return [p['id'] for p in corridorPoints]
 
-	closestPoints = xClosestPoints(dist_arr_sorted, amountClosestPoints, intersect_arr, start, end)
 
-	distance_to_start = []
-	for p in closestPoints:
-		currentPoint = getPointPos(points, p['id'])
-		distance = getDistTwoPoints(currentPoint, start)
-		distance_to_start.append({'id': p['id'], 'distance': round(distance, 0)})
-	distance_to_start_sorted = sorted(distance_to_start, key=lambda x: x['distance'])
-	path_ids = [p['id'] for p in distance_to_start_sorted]
+# --- "NYC principle": islands connected by single bridge points --------
+#
+# A flat corridor across the WHOLE map assumes free-space travel between
+# any two waypoints, which is exactly the assumption real geography
+# breaks (rivers, city blocks, no direct road). This is the fix that was
+# prototyped in py/islands.py: cluster the map into dense "islands"
+# (like Manhattan/Brooklyn/Queens), connect neighboring islands by
+# exactly the one closest point-pair between them (like a single
+# bridge), and only ever run the cheap corridor+chain algorithm INSIDE
+# one island at a time - the case it's actually good at. Crossing
+# between islands is a lookup in a tiny graph (one node per island),
+# not a search over every point on the map.
+#
+# This is now the DEFAULT routing path (see runTraceRoute), not a
+# separate demo - with only 1 island (few points, or the whole map
+# turns out to be one connected blob) it degenerates to exactly the old
+# flat single-corridor behavior.
 
-	getDistance = lambda p1, p2: sqrt((p2['x'] - p1['x'])**2 + (p2['y'] - p1['y'])**2)
-	direct_distance = getDistance(start, end)
+def pickIslandCount(amountPoints):
+	if amountPoints < 20: return 1
+	return max(2, min(8, round(sqrt(amountPoints) / 4)))
 
-	closest_full = [points[p['id']] for p in closestPoints]
+def clusterIslands(points, k, iterations=15):
+	if k <= 1 or len(points) <= k:
+		return [list(points)]
+
+	centers = [dict(p) for p in r.sample(points, k)]
+	assignment = [0] * len(points)
+
+	for _ in range(iterations):
+		for i, p in enumerate(points):
+			assignment[i] = min(range(k), key=lambda c: getDistTwoPoints(p, centers[c]))
+		for c in range(k):
+			members = [points[i] for i in range(len(points)) if assignment[i] == c]
+			if not members: continue
+			centers[c] = {
+				'x': sum(m['x'] for m in members) / len(members),
+				'y': sum(m['y'] for m in members) / len(members),
+			}
+
+	islands = [[] for _ in range(k)]
+	for i, p in enumerate(points):
+		islands[assignment[i]].append(p)
+	return [isl for isl in islands if isl]
+
+def findContactPoints(islands, sampleCap=150):
+	"""For every pair of islands, the single closest point pair becomes
+	their one bridge. Each island's search is capped to a random sample
+	(sampleCap) so this stays fast even with large, populous islands -
+	an O(k^2 * sampleCap^2) bound instead of O(k^2 * n^2)."""
+	k = len(islands)
+	samples = [r.sample(isl, min(len(isl), sampleCap)) if isl else [] for isl in islands]
+	contacts = {}
+	for i in range(k):
+		for j in range(i + 1, k):
+			if not samples[i] or not samples[j]: continue
+			bestPair, bestDist = None, float('inf')
+			for a in samples[i]:
+				for b in samples[j]:
+					d = getDistTwoPoints(a, b)
+					if d < bestDist:
+						bestDist, bestPair = d, (a, b)
+			if bestPair:
+				contacts[(i, j)] = {'a': bestPair[0], 'b': bestPair[1], 'distance': bestDist}
+	return contacts
+
+def buildIslandGraph(k, contacts):
+	adj = [[] for _ in range(k)]
+	for (i, j), c in contacts.items():
+		adj[i].append((j, c['distance']))
+		adj[j].append((i, c['distance']))
+	return adj
+
+def dijkstraIslands(adj, startIsland, endIsland):
+	k = len(adj)
+	distArr = [float('inf')] * k
+	prev = [None] * k
+	distArr[startIsland] = 0
+	pq = [(0, startIsland)]
+	visited = [False] * k
+	while pq:
+		d, u = heapq.heappop(pq)
+		if visited[u]: continue
+		visited[u] = True
+		if u == endIsland: break
+		for v, w in adj[u]:
+			nd = d + w
+			if nd < distArr[v]:
+				distArr[v] = nd
+				prev[v] = u
+				heapq.heappush(pq, (nd, v))
+	if distArr[endIsland] == float('inf'): return None
+	path = [endIsland]
+	while path[-1] != startIsland:
+		path.append(prev[path[-1]])
+	path.reverse()
+	return path
+
+def islandCentroid(island):
+	return {'x': sum(p['x'] for p in island) / len(island), 'y': sum(p['y'] for p in island) / len(island)}
+
+def nearestIslandIndex(islands, point):
+	return min(range(len(islands)), key=lambda i: getDistTwoPoints(point, islandCentroid(islands[i])))
+
+
+def checks(amountPoints):
+	if amountPoints < 2: raise ValueError("Bad Args")
+
+
+def runTraceRoute(amountPoints, spread, maxHopDistance=200, start=None, end=None):
+	"""
+	start/end are plain {'x', 'y'} coords, independent of the generated
+	point cloud - lets a caller pass whatever coordinates a user clicked
+	on a map instead of only ever routing between the two opposite
+	corners. Default to those corners when not given.
+
+	Routes hierarchically by default (see the "NYC principle" block
+	above): the map is split into islands, a tiny graph of island-to-
+	island bridges is crossed to pick which islands the route passes
+	through, and the cheap corridor+chain algorithm only ever runs
+	locally inside one island at a time.
+	"""
+	checks(amountPoints)
+
+	points = genPoints(amountPoints, spread)
+	start = dict(start) if start else {'x': 0, 'y': 0}
+	end = dict(end) if end else {'x': spread, 'y': spread}
+	direct_distance = getDistTwoPoints(start, end)
+
+	numIslands = pickIslandCount(amountPoints)
+	islands = clusterIslands(points, numIslands)
+	contacts = findContactPoints(islands)
+	islandGraph = buildIslandGraph(len(islands), contacts)
+
+	startIsland = nearestIslandIndex(islands, start)
+	endIsland = nearestIslandIndex(islands, end)
+	islandPath = dijkstraIslands(islandGraph, startIsland, endIsland) if startIsland != endIsland else [startIsland]
+	if islandPath is None: islandPath = [startIsland, endIsland]  # disconnected islands: best-effort straight hop
+
+	fullChainIds = []
+	current = start
+	maxHopOverall = 0.0
+	allSatisfied = True
+	for idx, islandIdx in enumerate(islandPath):
+		islandIds = [p['id'] for p in islands[islandIdx]]
+		if idx < len(islandPath) - 1:
+			nextIsland = islandPath[idx + 1]
+			key = (islandIdx, nextIsland) if islandIdx < nextIsland else (nextIsland, islandIdx)
+			c = contacts.get(key)
+			exitPoint = (c['a'] if islandIdx < nextIsland else c['b']) if c else end
+		else:
+			exitPoint = end
+
+		corridorIds = buildCorridorIds(points, islandIds, current, exitPoint)
+		best = findChainWithMaxHop(corridorIds, points, current, exitPoint, maxHopDistance)
+		if best:
+			fullChainIds.extend(best['chainIds'])
+			maxHopOverall = max(maxHopOverall, best['max_hop'])
+			allSatisfied = allSatisfied and best['satisfied']
+		else:
+			maxHopOverall = max(maxHopOverall, getDistTwoPoints(current, exitPoint))
+			allSatisfied = False
+
+		if idx < len(islandPath) - 1:
+			fullChainIds.append(exitPoint['id'])
+		current = exitPoint
+
+	chain_full = [points[cid] for cid in fullChainIds]
+	chain_distance = getChainDistance(fullChainIds, points, start, end)
+	detour_factor = chain_distance / direct_distance if direct_distance else 1.0
+
+	crossedKeys = set()
+	for t in range(len(islandPath) - 1):
+		i, j = islandPath[t], islandPath[t + 1]
+		crossedKeys.add((i, j) if i < j else (j, i))
+	bridgesUsed = [
+		{'a': {'x': c['a']['x'], 'y': c['a']['y']}, 'b': {'x': c['b']['x'], 'y': c['b']['y']}}
+		for key, c in contacts.items() if key in crossedKeys
+	]
 
 	return {
 		'points': points,
 		'start': start,
 		'end': end,
-		'closest': closest_full,
-		'path_ids': path_ids,
+		'closest': chain_full,
 		'direct_distance': direct_distance,
+		'chain': chain_full,
+		'chain_distance': chain_distance,
+		'detour_factor': detour_factor,
+		'max_hop': maxHopOverall,
+		'max_hop_satisfied': allSatisfied,
+		'islands': [[p['id'] for p in isl] for isl in islands],
+		'bridges': bridgesUsed,
 	}
