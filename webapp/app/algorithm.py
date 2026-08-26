@@ -308,7 +308,7 @@ def checks(amountPoints):
 	if amountPoints < 2: raise ValueError("Bad Args")
 
 
-def runTraceRoute(amountPoints, spread, maxHopDistance=200, start=None, end=None):
+def runTraceRoute(amountPoints, spread, maxHopDistance=20, start=None, end=None):
 	"""
 	start/end are plain {'x', 'y'} coords, independent of the generated
 	point cloud - lets a caller pass whatever coordinates a user clicked
@@ -344,11 +344,21 @@ def runTraceRoute(amountPoints, spread, maxHopDistance=200, start=None, end=None
 	allSatisfied = True
 	for idx, islandIdx in enumerate(islandPath):
 		islandIds = [p['id'] for p in islands[islandIdx]]
-		if idx < len(islandPath) - 1:
+		crossing = idx < len(islandPath) - 1
+		if crossing:
 			nextIsland = islandPath[idx + 1]
 			key = (islandIdx, nextIsland) if islandIdx < nextIsland else (nextIsland, islandIdx)
 			c = contacts.get(key)
-			exitPoint = (c['a'] if islandIdx < nextIsland else c['b']) if c else end
+			# 'a' always belongs to the lower-indexed island of the pair, 'b'
+			# to the higher one - pick whichever side actually sits on the
+			# CURRENT island as the exit point, so the chain routes there
+			# instead of always favoring one side of the bridge.
+			if c:
+				myPoint = c['a'] if islandIdx < nextIsland else c['b']
+				theirPoint = c['b'] if islandIdx < nextIsland else c['a']
+			else:
+				myPoint = theirPoint = end
+			exitPoint = myPoint
 		else:
 			exitPoint = end
 
@@ -362,9 +372,13 @@ def runTraceRoute(amountPoints, spread, maxHopDistance=200, start=None, end=None
 			maxHopOverall = max(maxHopOverall, getDistTwoPoints(current, exitPoint))
 			allSatisfied = False
 
-		if idx < len(islandPath) - 1:
-			fullChainIds.append(exitPoint['id'])
-		current = exitPoint
+		if crossing:
+			fullChainIds.append(myPoint['id'])
+			if theirPoint['id'] != myPoint['id']:
+				fullChainIds.append(theirPoint['id'])
+			current = theirPoint
+		else:
+			current = exitPoint
 
 	chain_full = [points[cid] for cid in fullChainIds]
 	chain_distance = getChainDistance(fullChainIds, points, start, end)

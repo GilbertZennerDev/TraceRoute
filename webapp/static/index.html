@@ -60,7 +60,7 @@
 				<strong style="color:#ff5f7e">🔴 red points</strong> are the route TraceRoute picked,
 				connected by the <strong style="color:#ffd166">🟡 yellow path</strong> it would actually
 				follow. You don't pick how many stops to use — set the one thing that actually matters
-				(say, 200km max between fuel/delivery stops) and TraceRoute finds the fewest, straightest
+				(say, 20km max between fuel/delivery stops) and TraceRoute finds the fewest, straightest
 				stops that keep every single leg under that limit. The map itself is split into
 				colored <strong>islands</strong> (dense clusters, like boroughs), joined only by the
 				single closest <strong>bridge</strong> point-pair between them (dashed lines) — the fast
@@ -71,7 +71,7 @@
 				<form id="form" class="controls">
 					<label>
 						<span>Points</span>
-						<input type="number" id="amountPoints" value="200" min="2" max="5000">
+						<input type="number" id="amountPoints" value="600" min="2" max="8000">
 					</label>
 					<label>
 						<span>Map size (km)</span>
@@ -79,7 +79,7 @@
 					</label>
 					<label>
 						<span>Max distance between stops (km)</span>
-						<input type="number" id="maxHopDistance" value="200" min="1">
+						<input type="number" id="maxHopDistance" value="20" min="1">
 					</label>
 					<label>
 						<span>Engine</span>
