@@ -279,19 +279,17 @@ main {
 
 .canvas-wrap { position: relative; }
 
-canvas {
-	width: 100%;
-	height: auto;
-	aspect-ratio: 900 / 600;
-	background: var(--bg-elev);
-	border-radius: 10px;
-	border: 1px solid var(--panel-border);
+/* #canvas (2D), #cesium-container, and #three-container are three stacked
+   render surfaces sharing one .demo3d-viewport box - only one is visible
+   at a time via [hidden], toggled by the #view select (see the coordinator
+   script at the bottom of index.html). */
+#canvas {
 	display: block;
 	cursor: crosshair;
 	transition: opacity 0.25s ease, filter 0.25s ease;
 }
-canvas.is-panning { cursor: grabbing; }
-.canvas-wrap.is-loading canvas { opacity: 0.45; filter: blur(1.5px) saturate(0.7); }
+#canvas.is-panning { cursor: grabbing; }
+.canvas-wrap.is-loading #canvas { opacity: 0.45; filter: blur(1.5px) saturate(0.7); }
 
 .map-btn-row {
 	position: absolute;
@@ -367,9 +365,7 @@ canvas.is-panning { cursor: grabbing; }
 }
 .demo3d-viewport:active { cursor: grabbing; }
 
-/* CesiumJS and Three.js each get the full viewport, toggled via [hidden] -
-   see the coordinator script at the bottom of index.html. */
-#cesium-container, #three-container {
+#canvas, #cesium-container, #three-container {
 	position: absolute;
 	inset: 0;
 	width: 100%;

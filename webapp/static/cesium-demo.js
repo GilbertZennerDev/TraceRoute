@@ -1,12 +1,14 @@
 (() => {
+	// Unified #form/#view (see script.js/three-demo.js) - this file only
+	// ever acts when #view is "3d-cesium", guarded via isActive() below.
 	const container = document.getElementById("cesium-container");
-	const form3d = document.getElementById("form3d");
-	const info3d = document.getElementById("info3d");
-	const clickStatus3d = document.getElementById("clickStatus3d");
-	const stats3d = document.getElementById("stats3d");
-	const undoBtn3d = document.getElementById("undoPoint3d");
-	const spreadInput3d = document.getElementById("spread3d");
-	const engineSelect3d = document.getElementById("engine3d");
+	const form3d = document.getElementById("form");
+	const info3d = document.getElementById("info");
+	const clickStatus3d = document.getElementById("clickStatus");
+	const stats3d = document.getElementById("stats");
+	const undoBtn3d = document.getElementById("undoPoint");
+	const spreadInput3d = document.getElementById("spread");
+	const viewSelect3d = document.getElementById("view");
 	if (!container || !form3d || typeof Cesium === "undefined") return;
 
 	const SPREAD_REF = 500;
@@ -119,7 +121,7 @@
 	}
 
 	function isActive() {
-		return engineSelect3d && engineSelect3d.value === "cesium";
+		return viewSelect3d && viewSelect3d.value === "3d-cesium";
 	}
 
 	function initViewer() {
@@ -488,11 +490,12 @@
 		if (!isActive()) return;
 		if (!viewer) initViewer();
 
-		const amountPoints = document.getElementById("amountPoints3d").value;
+		const amountPoints = document.getElementById("amountPoints").value;
 		const spread = Number(spreadInput3d.value);
-		const maxHopDistance = document.getElementById("maxHopDistance3d").value;
+		const maxHopDistance = document.getElementById("maxHopDistance").value;
+		const engine = document.getElementById("engine").value;
 
-		const paramObj = { amountPoints, spread, maxHopDistance };
+		const paramObj = { amountPoints, spread, maxHopDistance, engine };
 		if (picked3d.start) { paramObj.startX = picked3d.start.x; paramObj.startY = picked3d.start.y; paramObj.startZ = picked3d.start.z; }
 		if (picked3d.end) { paramObj.endX = picked3d.end.x; paramObj.endY = picked3d.end.y; paramObj.endZ = picked3d.end.z; }
 		if (picked3d.waypoints.length) {
@@ -519,13 +522,19 @@
 			if (!picked3d.start) flyToScene(spread);
 
 			stats3d.hidden = false;
-			document.getElementById("statClosest3d").textContent = data.closest.length;
-			document.getElementById("statIslands3d").textContent = data.bridges ? data.bridges.length + 1 : 1;
-			document.getElementById("statDistance3d").textContent = data.direct_distance.toFixed(1);
-			document.getElementById("statChain3d").textContent = data.chain_distance.toFixed(1);
+			document.getElementById("statPoints").textContent = data.points.length;
+			document.getElementById("statClosest").textContent = data.closest.length;
+			document.getElementById("statIslands").textContent = data.bridges ? data.bridges.length + 1 : 1;
+			document.getElementById("statDistance").textContent = data.direct_distance.toFixed(1);
+			document.getElementById("statChain").textContent = data.chain_distance.toFixed(1);
+			document.getElementById("statDetour").textContent = `${data.detour_factor.toFixed(2)}×`;
+			document.getElementById("statMaxHop").textContent = data.max_hop.toFixed(1);
 
 			const detourGood = data.detour_factor < 1.1;
-			info3d.innerHTML = `⚡ Solved in <strong>${elapsed}ms</strong> &nbsp;·&nbsp; `
+			const engineTag = data.engine === "cpp"
+				? `<span style="color:#8b7cf6">⚙️ C++</span>`
+				: `<span style="color:#00d9c0">🐍 Python</span>`;
+			info3d.innerHTML = `${engineTag} solved in <strong>${elapsed}ms</strong> &nbsp;·&nbsp; `
 				+ `<span style="color:#00d9c0">✈️ direct ${data.direct_distance.toFixed(1)}</span> &nbsp;·&nbsp; `
 				+ `<span style="color:#ffd166">🛣️ chain ${data.chain_distance.toFixed(1)}</span> `
 				+ `<span style="color:${detourGood ? '#7ee787' : '#ff5f7e'}">(${data.detour_factor.toFixed(2)}× ${detourGood ? '🎯' : '⚠️'})</span>`;
@@ -544,9 +553,23 @@
 		drawPreview3d();
 	});
 
-	if (engineSelect3d) {
-		engineSelect3d.addEventListener("change", () => {
-			if (isActive()) updateClickStatus3d();
+	// Switching to/from another view (see script.js/three-demo.js for their
+	// own reset) drops the current click selection rather than trying to
+	// keep three separate pick-state machines in sync across renderers.
+	if (viewSelect3d) {
+		viewSelect3d.addEventListener("change", () => {
+			picked3d = { start: null, waypoints: [], end: null };
+			if (!isActive()) return;
+			updateClickStatus3d();
+			drawPreview3d();
 		});
 	}
+
+	updateClickStatus3d();
+	// The sole auto-run-on-load trigger for all three renderers: script.js
+	// and three-demo.js load first and only attach their own submit
+	// listener (no dispatch), so this is the first point where all three
+	// listeners on the shared #form are guaranteed to be attached - only
+	// the one matching the default #view ("2d") actually runs.
+	form3d.dispatchEvent(new Event("submit"));
 })();

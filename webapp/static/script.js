@@ -74,7 +74,10 @@ function screenToLogical(e) {
 
 function eventToWorld(e, spread) {
 	const { x, y } = screenToLogical(e);
-	return { x: (x / canvas.width) * spread, y: (y / canvas.height) * spread };
+	// z is the 3rd routing dimension (see algorithm3d.py) - the 2D view
+	// never lets the user pick it, so every click-placed point sits on a
+	// fixed mid-plane. Purely a routing input, not used for 2D drawing.
+	return { x: (x / canvas.width) * spread, y: (y / canvas.height) * spread, z: spread / 2 };
 }
 
 function drawPreview() {
@@ -197,13 +200,20 @@ canvas.addEventListener("wheel", (e) => {
 resetViewBtn.addEventListener("click", resetView);
 undoPointBtn.addEventListener("click", undoLastPoint);
 
-spreadInput.addEventListener("change", () => {
+function resetPicked2d() {
 	picked = { start: null, waypoints: [], end: null };
 	stopFlowAnimation();
 	view = { zoom: 1, panX: 0, panY: 0 };
 	updateClickStatus();
 	drawPreview();
-});
+}
+spreadInput.addEventListener("change", resetPicked2d);
+
+// Switching to/from another view (see three-demo.js/cesium-demo.js for
+// their own reset) drops the current click selection rather than trying to
+// keep three separate pick-state machines in sync across renderers.
+const viewSelectEl = document.getElementById("view");
+if (viewSelectEl) viewSelectEl.addEventListener("change", resetPicked2d);
 
 // --- hover tooltip: nearest point + which island it belongs to ---------
 
@@ -619,12 +629,13 @@ function setLoading(isLoading) {
 
 form.addEventListener("submit", async (e) => {
 	e.preventDefault();
+	// This is one of three renderers sharing the same #form - see
+	// three-demo.js/cesium-demo.js for the other two. Skip entirely unless
+	// the 2D view is actually selected.
+	const viewSel = document.getElementById("view");
+	if (viewSel && viewSel.value !== "2d") return;
 
-	// C++ is the default engine, but it doesn't support mandatory waypoints
-	// yet - fall back to Python automatically instead of making the user
-	// hunt for the dropdown after hitting a 400.
-	const hasWaypoints = picked.waypoints.length > 0;
-	const engine = hasWaypoints ? "python" : document.getElementById("engine").value;
+	const engine = document.getElementById("engine").value;
 	const spread = Number(spreadInput.value);
 	const paramObj = {
 		amountPoints: document.getElementById("amountPoints").value,
@@ -632,10 +643,10 @@ form.addEventListener("submit", async (e) => {
 		maxHopDistance: document.getElementById("maxHopDistance").value,
 		engine,
 	};
-	if (picked.start) { paramObj.startX = picked.start.x; paramObj.startY = picked.start.y; }
-	if (picked.end) { paramObj.endX = picked.end.x; paramObj.endY = picked.end.y; }
-	if (hasWaypoints) {
-		paramObj.waypoints = picked.waypoints.map(w => `${w.x},${w.y}`).join(";");
+	if (picked.start) { paramObj.startX = picked.start.x; paramObj.startY = picked.start.y; paramObj.startZ = picked.start.z; }
+	if (picked.end) { paramObj.endX = picked.end.x; paramObj.endY = picked.end.y; paramObj.endZ = picked.end.z; }
+	if (picked.waypoints.length) {
+		paramObj.waypoints = picked.waypoints.map(w => `${w.x},${w.y},${w.z}`).join(";");
 	}
 	const params = new URLSearchParams(paramObj);
 
@@ -644,7 +655,12 @@ form.addEventListener("submit", async (e) => {
 
 	try {
 		const started = performance.now();
-		const res = await fetch(`/api/traceroute?${params}`);
+		// The 2D view is now just a flat (z-ignoring) render of the same
+		// x/y/z route the 3D views compute - one data source, three ways
+		// to look at it (see the plan for why: keeps C++ as the fast
+		// default across every view instead of forking into a 2D-only and
+		// a 3D-only engine).
+		const res = await fetch(`/api/traceroute3d?${params}`);
 		if (!res.ok) {
 			const err = await res.json();
 			throw new Error(err.detail || res.statusText);
@@ -679,4 +695,6 @@ form.addEventListener("submit", async (e) => {
 });
 
 updateClickStatus();
-form.dispatchEvent(new Event("submit"));
+// Auto-run-on-load is triggered once from cesium-demo.js (loaded last, so
+// all three renderers' submit listeners are guaranteed attached by then) -
+// see the comment there.

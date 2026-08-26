@@ -57,8 +57,9 @@
 		<section id="demo" class="panel">
 			<div class="panel-head">
 				<h2>Try it as a router</h2>
-				<p>Think of the dots as waypoints — intersections, charging stations, delivery stops.
-				<strong style="color:#00d9c0">Click the map to set the origin</strong>, optionally
+				<p>One computed route, three ways to look at it — switch with the <strong>View</strong>
+				dropdown below. Think of the dots as waypoints — intersections, charging stations,
+				delivery stops. <strong style="color:#00d9c0">Click to set the origin</strong>, optionally
 				<strong style="color:#f4a300">Shift+click to add mandatory stops</strong> the route must
 				pass through in order, then
 				<strong style="color:#6c5ce7">click again to set the destination</strong>. The
@@ -68,8 +69,8 @@
 				(say, 20km max between fuel/delivery stops) and TraceRoute finds the fewest, straightest
 				stops that keep every single leg under that limit. The map itself is split into
 				colored <strong>islands</strong> (dense clusters, like boroughs), joined only by the
-				single closest <strong>bridge</strong> point-pair between them (dashed lines) — the fast
-				routing only ever runs inside one island at a time, crossing is just a lookup.</p>
+				single closest <strong>bridge</strong> point-pair between them — the fast routing only
+				ever runs inside one island at a time, crossing is just a lookup.</p>
 			</div>
 
 			<div class="demo-grid">
@@ -89,8 +90,16 @@
 					<label>
 						<span>Engine</span>
 						<select id="engine">
-							<option value="cpp" selected>⚙️ C++ (islands, no mandatory stops yet)</option>
+							<option value="cpp" selected>⚙️ C++ (islands + mandatory stops)</option>
 							<option value="python">🐍 Python (islands + mandatory stops)</option>
+						</select>
+					</label>
+					<label>
+						<span>View</span>
+						<select id="view">
+							<option value="2d" selected>🗺️ 2D map</option>
+							<option value="3d-cesium">🌍 3D (CesiumJS)</option>
+							<option value="3d-three">🎮 3D (Three.js, backup)</option>
 						</select>
 					</label>
 					<button type="submit" class="btn btn-primary btn-block">
@@ -131,21 +140,25 @@
 				</form>
 
 				<div class="canvas-wrap">
-					<canvas id="canvas" width="900" height="600"></canvas>
-					<div class="map-btn-row">
-						<button type="button" id="undoPoint" class="map-btn" title="Undo last placed point">↩ Undo</button>
-						<button type="button" id="resetView" class="map-btn" title="Reset zoom & pan">⤾ Reset view</button>
+					<div class="demo3d-viewport">
+						<canvas id="canvas" width="900" height="600"></canvas>
+						<div id="cesium-container" hidden></div>
+						<div id="three-container" hidden></div>
+						<div class="map-btn-row">
+							<button type="button" id="undoPoint" class="map-btn" title="Undo last placed point">↩ Undo</button>
+							<button type="button" id="resetView" class="map-btn" title="Reset zoom & pan (2D view)">⤾ Reset view</button>
+						</div>
+						<div class="map-legend">
+							<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
+							<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
+							<div><span class="swatch" style="background:#f4a300"></span>Mandatory stop</div>
+							<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
+							<div><span class="swatch" style="background:#ffd166"></span>Route / bridge</div>
+							<div><span class="swatch swatch-island"></span>Island (color varies)</div>
+						</div>
+						<div id="mapTooltip" class="map-tooltip" hidden></div>
 					</div>
-					<div class="map-legend">
-						<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
-						<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
-						<div><span class="swatch" style="background:#f4a300"></span>Mandatory stop</div>
-						<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
-						<div><span class="swatch" style="background:#ffd166"></span>Route / bridge</div>
-						<div><span class="swatch swatch-island"></span>Island (color varies)</div>
-					</div>
-					<div id="mapTooltip" class="map-tooltip" hidden></div>
-					<p id="clickStatus" class="canvas-info">📍 Click the map to set the origin</p>
+					<p id="clickStatus" class="canvas-info">📍 Click to set the origin</p>
 					<p id="info" class="canvas-info"></p>
 				</div>
 			</div>
@@ -183,85 +196,6 @@
 					the cheapest real-world route to follow.</p>
 				</li>
 			</ol>
-		</section>
-
-		<section id="demo3d" class="panel">
-			<div class="panel-head">
-				<span class="eyebrow">Same math, one more axis</span>
-				<h2>It works in 3D too</h2>
-				<p>The same island routing and mandatory-stop logic from the 2D demo above, generalized
-				to <code>(x, y, z)</code> vector math instead of 2D slopes.
-				<strong style="color:#00d9c0">Click the terrain to set the origin</strong>, optionally
-				<strong style="color:#f4a300">Shift+click to add mandatory stops</strong>, then
-				<strong style="color:#6c5ce7">click again to set the destination</strong>. Drag to orbit,
-				scroll to zoom.</p>
-			</div>
-
-			<div class="demo-grid">
-				<form id="form3d" class="controls">
-					<label>
-						<span>Points</span>
-						<input type="number" id="amountPoints3d" value="150" min="2" max="1000">
-					</label>
-					<label>
-						<span>Spread</span>
-						<input type="number" id="spread3d" value="500" min="10">
-					</label>
-					<label>
-						<span>Max distance between stops (km)</span>
-						<input type="number" id="maxHopDistance3d" value="20" min="1">
-					</label>
-					<label>
-						<span>Engine</span>
-						<select id="engine3d">
-							<option value="cesium" selected>🌍 CesiumJS (new default)</option>
-							<option value="threejs">🎮 Three.js (classic / backup)</option>
-						</select>
-					</label>
-					<button type="submit" class="btn btn-primary btn-block">
-						<span class="btn-label">Fly the route</span>
-						<span class="btn-spinner" aria-hidden="true"></span>
-					</button>
-
-					<div class="stats" id="stats3d" hidden>
-						<div class="stat">
-							<span class="stat-value" id="statClosest3d">–</span>
-							<span class="stat-label">stops used</span>
-						</div>
-						<div class="stat">
-							<span class="stat-value" id="statIslands3d">–</span>
-							<span class="stat-label">islands crossed</span>
-						</div>
-						<div class="stat">
-							<span class="stat-value" id="statDistance3d">–</span>
-							<span class="stat-label">direct distance</span>
-						</div>
-						<div class="stat">
-							<span class="stat-value" id="statChain3d">–</span>
-							<span class="stat-label">chain distance</span>
-						</div>
-					</div>
-				</form>
-
-				<div class="canvas-wrap">
-					<div class="demo3d-viewport">
-						<div id="cesium-container"></div>
-						<div id="three-container" hidden></div>
-						<div class="map-btn-row">
-							<button type="button" id="undoPoint3d" class="map-btn" title="Undo last placed point">↩ Undo</button>
-						</div>
-						<div class="map-legend">
-							<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
-							<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
-							<div><span class="swatch" style="background:#f4a300"></span>Mandatory stop</div>
-							<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
-							<div><span class="swatch swatch-island"></span>Island (color varies)</div>
-						</div>
-					</div>
-					<p id="clickStatus3d" class="canvas-info">📍 Click the terrain to set the origin</p>
-					<p id="info3d" class="canvas-info"></p>
-				</div>
-			</div>
 		</section>
 
 		<section class="panel panel-compare">
@@ -359,19 +293,20 @@
 	<script src="three-demo.js"></script>
 	<script src="cesium-demo.js"></script>
 	<script>
-		// Coordinates which 3D viewport is visible - the two demo engines
-		// (three-demo.js, cesium-demo.js) each guard their own submit
-		// handler on this same #engine3d select, so this only needs to
-		// own showing/hiding the right container.
+		// Coordinates which of the three render surfaces (2D canvas,
+		// CesiumJS, Three.js) is visible - each of script.js/cesium-demo.js/
+		// three-demo.js guards its own submit handler on this same #view
+		// select, so this only needs to own showing/hiding the right one.
 		(() => {
-			const select = document.getElementById("engine3d");
+			const select = document.getElementById("view");
+			const canvasEl = document.getElementById("canvas");
 			const cesiumEl = document.getElementById("cesium-container");
 			const threeEl = document.getElementById("three-container");
-			if (!select || !cesiumEl || !threeEl) return;
+			if (!select || !canvasEl || !cesiumEl || !threeEl) return;
 			select.addEventListener("change", () => {
-				const isCesium = select.value === "cesium";
-				cesiumEl.hidden = !isCesium;
-				threeEl.hidden = isCesium;
+				canvasEl.hidden = select.value !== "2d";
+				cesiumEl.hidden = select.value !== "3d-cesium";
+				threeEl.hidden = select.value !== "3d-three";
 			});
 		})();
 	</script>

@@ -298,6 +298,282 @@ static int nearestIslandIndex(const vector<vector<int>> &islands, const vector<P
 	return best;
 }
 
+// =========================================================================
+// 3D routing core - mirrors app/algorithm3d.py, including mandatory
+// waypoints and the same island routing above. buildIslandGraph/
+// dijkstraIslands/Contact are dimension-agnostic (pure island-index graph
+// math, no coordinates) and are reused as-is from the 2D code above -
+// exactly like algorithm3d.py imports them straight from algorithm.py
+// instead of duplicating them.
+// =========================================================================
+
+struct Point3D { double x, y, z; };
+
+static double dist3D(const Point3D &a, const Point3D &b)
+{
+	double dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// Vector-projection corridor filter (t = dot(P-start, d) / dot(d, d), same
+// as projectPointOnLine3D in algorithm3d.py) - generalizes the 2D slope-
+// line-intersection filter to any number of dimensions via dot products.
+static vector<int> corridorFilter3D(const vector<Point3D> &points, const vector<int> &candidateIds,\
+const Point3D &start, const Point3D &end)
+{
+	double dx = end.x - start.x, dy = end.y - start.y, dz = end.z - start.z;
+	double dd = dx * dx + dy * dy + dz * dz;
+
+	vector<int> ids;
+	ids.reserve(candidateIds.size());
+	for (int id : candidateIds)
+	{
+		double px = points[id].x - start.x, py = points[id].y - start.y, pz = points[id].z - start.z;
+		double t = dd ? (px * dx + py * dy + pz * dz) / dd : 0;
+		if (t > 0 && t < 1) ids.push_back(id);
+	}
+	return ids;
+}
+
+static vector<int> buildEvenChain3D(const vector<int> &candidateIds, const vector<Point3D> &points,\
+const Point3D &start, const Point3D &end, int amount)
+{
+	vector<int> remaining = candidateIds;
+	double target = dist3D(start, end) / (amount + 1);
+	Point3D current = start;
+	vector<int> pathIds;
+
+	for (int k = 0; k < amount && !remaining.empty(); ++k)
+	{
+		double distToEndNow = dist3D(current, end);
+		vector<int> forward;
+		for (int id : remaining) if (dist3D(points[id], end) < distToEndNow) forward.push_back(id);
+		vector<int> &pool = forward.empty() ? remaining : forward;
+
+		double d1x = end.x - current.x, d1y = end.y - current.y, d1z = end.z - current.z;
+		double mag1 = sqrt(d1x * d1x + d1y * d1y + d1z * d1z);
+
+		int bestId = -1;
+		double bestScore = numeric_limits<double>::max();
+		for (int id : pool)
+		{
+			double d2x = points[id].x - current.x, d2y = points[id].y - current.y, d2z = points[id].z - current.z;
+			double mag2 = sqrt(d2x * d2x + d2y * d2y + d2z * d2z);
+			if (mag1 == 0 || mag2 == 0) continue;
+			double cosA = max(-1.0, min(1.0, (d1x * d2x + d1y * d2y + d1z * d2z) / (mag1 * mag2)));
+			double heading = acos(cosA);
+			double hopDiff = target ? fabs(mag2 - target) / target : 0;
+			double score = heading + 0.4 * hopDiff;
+			if (score <= bestScore) { bestScore = score; bestId = id; }
+		}
+		if (bestId == -1) bestId = pool[0];
+
+		pathIds.push_back(bestId);
+		current = points[bestId];
+		remaining.erase(remove(remaining.begin(), remaining.end(), bestId), remaining.end());
+	}
+	return pathIds;
+}
+
+static double maxHopLength3D(const vector<int> &chainIds, const vector<Point3D> &points, const Point3D &start, const Point3D &end)
+{
+	vector<Point3D> hops;
+	hops.push_back(start);
+	for (int id : chainIds) hops.push_back(points[id]);
+	hops.push_back(end);
+	double m = 0;
+	for (size_t i = 0; i + 1 < hops.size(); ++i) m = max(m, dist3D(hops[i], hops[i + 1]));
+	return m;
+}
+
+static ChainSearch findChainWithMaxHop3D(const vector<int> &candidateIds, const vector<Point3D> &points,\
+const Point3D &start, const Point3D &end, double maxHopDistance, int amountCap = 60)
+{
+	double directDistance = dist3D(start, end);
+	int needed = maxHopDistance > 0 ? (int) (directDistance / maxHopDistance) + 2 : amountCap;
+	int maxAmount = min({(int) candidateIds.size(), amountCap, max(needed, 1)});
+
+	ChainSearch bestFallback{{}, numeric_limits<double>::max(), false};
+	for (int amount = 0; amount <= maxAmount; ++amount)
+	{
+		vector<int> chain = amount > 0 ? buildEvenChain3D(candidateIds, points, start, end, amount) : vector<int>{};
+		double mh = maxHopLength3D(chain, points, start, end);
+		if (mh <= maxHopDistance) return {chain, mh, true};
+		if (mh < bestFallback.maxHop) bestFallback = {chain, mh, false};
+	}
+	return bestFallback;
+}
+
+static vector<vector<int>> clusterIslands3D(const vector<Point3D> &points, int k, mt19937 &rng, int iterations = 15)
+{
+	int n = (int) points.size();
+	if (k <= 1 || n <= k)
+	{
+		vector<int> all(n);
+		iota(all.begin(), all.end(), 0);
+		return { all };
+	}
+
+	vector<int> idx(n);
+	iota(idx.begin(), idx.end(), 0);
+	shuffle(idx.begin(), idx.end(), rng);
+	vector<Point3D> centers(k);
+	for (int c = 0; c < k; ++c) centers[c] = points[idx[c]];
+
+	vector<int> assignment(n, 0);
+	for (int it = 0; it < iterations; ++it)
+	{
+		for (int i = 0; i < n; ++i)
+		{
+			int best = 0; double bestD = numeric_limits<double>::max();
+			for (int c = 0; c < k; ++c)
+			{
+				double d = dist3D(points[i], centers[c]);
+				if (d < bestD) { bestD = d; best = c; }
+			}
+			assignment[i] = best;
+		}
+		vector<Point3D> sum(k, {0, 0, 0});
+		vector<int> cnt(k, 0);
+		for (int i = 0; i < n; ++i)
+		{
+			sum[assignment[i]].x += points[i].x; sum[assignment[i]].y += points[i].y; sum[assignment[i]].z += points[i].z;
+			cnt[assignment[i]]++;
+		}
+		for (int c = 0; c < k; ++c) if (cnt[c] > 0) centers[c] = {sum[c].x / cnt[c], sum[c].y / cnt[c], sum[c].z / cnt[c]};
+	}
+
+	vector<vector<int>> raw(k);
+	for (int i = 0; i < n; ++i) raw[assignment[i]].push_back(i);
+	vector<vector<int>> islands;
+	for (auto &isl : raw) if (!isl.empty()) islands.push_back(move(isl));
+	return islands;
+}
+
+static map<pair<int, int>, Contact> findContactPoints3D(const vector<vector<int>> &islands,\
+const vector<Point3D> &points, mt19937 &rng, int sampleCap = 150)
+{
+	int k = (int) islands.size();
+	vector<vector<int>> samples(k);
+	for (int i = 0; i < k; ++i)
+	{
+		samples[i] = islands[i];
+		if ((int) samples[i].size() > sampleCap)
+		{
+			shuffle(samples[i].begin(), samples[i].end(), rng);
+			samples[i].resize(sampleCap);
+		}
+	}
+
+	map<pair<int, int>, Contact> contacts;
+	for (int i = 0; i < k; ++i)
+	{
+		for (int j = i + 1; j < k; ++j)
+		{
+			if (samples[i].empty() || samples[j].empty()) continue;
+			double bestDist = numeric_limits<double>::max();
+			int bestA = -1, bestB = -1;
+			for (int a : samples[i])
+				for (int b : samples[j])
+				{
+					double d = dist3D(points[a], points[b]);
+					if (d < bestDist) { bestDist = d; bestA = a; bestB = b; }
+				}
+			if (bestA != -1) contacts[{i, j}] = {bestA, bestB, bestDist};
+		}
+	}
+	return contacts;
+}
+
+static Point3D islandCentroid3D(const vector<int> &island, const vector<Point3D> &points)
+{
+	double sx = 0, sy = 0, sz = 0;
+	for (int id : island) { sx += points[id].x; sy += points[id].y; sz += points[id].z; }
+	int n = (int) island.size();
+	return {sx / n, sy / n, sz / n};
+}
+
+static int nearestIslandIndex3D(const vector<vector<int>> &islands, const vector<Point3D> &points, const Point3D &p)
+{
+	int best = 0; double bestD = numeric_limits<double>::max();
+	for (int i = 0; i < (int) islands.size(); ++i)
+	{
+		double d = dist3D(p, islandCentroid3D(islands[i], points));
+		if (d < bestD) { bestD = d; best = i; }
+	}
+	return best;
+}
+
+// Routes hierarchically from a to b through the 3D island graph - the 3D
+// counterpart of the inline per-leg logic in run_traceroute (2D). Pulled
+// out into its own function here (rather than inlined like the 2D version)
+// because run_traceroute3d needs to call it once per leg when mandatory
+// waypoints are given (a -> wp1 -> wp2 -> ... -> b), sharing one island
+// clustering across every leg - same reasoning as routeBetween3D in
+// algorithm3d.py.
+struct LegResult3D { vector<int> chainIds; double maxHop; bool satisfied; set<pair<int, int>> crossedKeys; };
+
+static LegResult3D routeBetween3D(const vector<Point3D> &points, const vector<vector<int>> &islands,\
+const map<pair<int, int>, Contact> &contacts, const vector<vector<pair<int, double>>> &islandGraph,\
+const Point3D &a, const Point3D &b, double maxHopDistance)
+{
+	int startIsland = nearestIslandIndex3D(islands, points, a);
+	int endIsland = nearestIslandIndex3D(islands, points, b);
+	vector<int> islandPath;
+	if (startIsland == endIsland) islandPath = {startIsland};
+	else
+	{
+		islandPath = dijkstraIslands(islandGraph, startIsland, endIsland);
+		if (islandPath.empty()) islandPath = {startIsland, endIsland};
+	}
+
+	vector<int> chainIds;
+	Point3D current = a;
+	double maxHopOverall = 0.0;
+	bool allSatisfied = true;
+	set<pair<int, int>> crossedKeys;
+
+	for (size_t idx = 0; idx < islandPath.size(); ++idx)
+	{
+		int islandIdx = islandPath[idx];
+		bool crossing = idx + 1 < islandPath.size();
+		Point3D exitPoint;
+		int myPointId = -1, theirPointId = -1;
+
+		if (crossing)
+		{
+			int nextIsland = islandPath[idx + 1];
+			pair<int, int> key = islandIdx < nextIsland ? make_pair(islandIdx, nextIsland) : make_pair(nextIsland, islandIdx);
+			crossedKeys.insert(key);
+			auto it = contacts.find(key);
+			if (it != contacts.end())
+			{
+				if (islandIdx < nextIsland) { myPointId = it->second.aIdx; theirPointId = it->second.bIdx; }
+				else { myPointId = it->second.bIdx; theirPointId = it->second.aIdx; }
+				exitPoint = points[myPointId];
+			}
+			else exitPoint = b;
+		}
+		else exitPoint = b;
+
+		vector<int> corridorIds = corridorFilter3D(points, islands[islandIdx], current, exitPoint);
+		ChainSearch best = findChainWithMaxHop3D(corridorIds, points, current, exitPoint, maxHopDistance);
+		for (int id : best.chainIds) chainIds.push_back(id);
+		maxHopOverall = max(maxHopOverall, best.maxHop);
+		allSatisfied = allSatisfied && best.satisfied;
+
+		if (crossing && myPointId != -1)
+		{
+			chainIds.push_back(myPointId);
+			if (theirPointId != myPointId) chainIds.push_back(theirPointId);
+			current = points[theirPointId];
+		}
+		else current = exitPoint;
+	}
+
+	return {chainIds, maxHopOverall, allSatisfied, crossedKeys};
+}
+
 extern "C"
 {
 
@@ -480,6 +756,178 @@ void free_traceroute_result(TraceRouteResult *res)
 	delete[] res->bridge_ay;
 	delete[] res->bridge_bx;
 	delete[] res->bridge_by;
+	delete res;
+}
+
+struct TraceRouteResult3D
+{
+	int point_count;
+	double *points_x;
+	double *points_y;
+	double *points_z;
+	double start_x, start_y, start_z;
+	double end_x, end_y, end_z;
+	int chain_count;
+	double *chain_x;
+	double *chain_y;
+	double *chain_z;
+	int *chain_is_stop; // 1 for a mandatory-waypoint marker, 0 for an algorithm-picked corridor point
+	double direct_distance;
+	double chain_distance;
+	double detour_factor;
+	double max_hop;
+	int max_hop_satisfied;
+
+	int island_count;
+	int *island_offsets;
+	int *island_point_ids;
+
+	int bridge_count;
+	double *bridge_ax;
+	double *bridge_ay;
+	double *bridge_az;
+	double *bridge_bx;
+	double *bridge_by;
+	double *bridge_bz;
+};
+
+// waypointsX/Y/Z (length waypointCount) are mandatory stops the route must
+// pass through in order, between start and end - same contract as the
+// `waypoints` param on runTraceRoute3D in algorithm3d.py. Pass
+// waypointCount = 0 (and any/null arrays) for a plain start->end route.
+__attribute__((visibility("default")))
+TraceRouteResult3D *run_traceroute3d(int amountPoints, int spread, double maxHopDistance,\
+double startX, double startY, double startZ, double endX, double endY, double endZ,\
+const double *waypointsX, const double *waypointsY, const double *waypointsZ, int waypointCount)
+{
+	random_device rd;
+	mt19937 rng(rd());
+	uniform_real_distribution<double> d(0, spread);
+
+	vector<Point3D> points(amountPoints);
+	for (int i = 0; i < amountPoints; ++i) points[i] = {d(rng), d(rng), d(rng)};
+
+	Point3D start{startX, startY, startZ}, end{endX, endY, endZ};
+	double directDistance = dist3D(start, end);
+
+	int numIslands = pickIslandCount(amountPoints);
+	vector<vector<int>> islands = clusterIslands3D(points, numIslands, rng);
+	map<pair<int, int>, Contact> contacts = findContactPoints3D(islands, points, rng);
+	vector<vector<pair<int, double>>> islandGraph = buildIslandGraph((int) islands.size(), contacts);
+
+	vector<Point3D> legs;
+	legs.push_back(start);
+	for (int i = 0; i < waypointCount; ++i) legs.push_back({waypointsX[i], waypointsY[i], waypointsZ[i]});
+	legs.push_back(end);
+
+	vector<Point3D> fullChainPoints;
+	vector<int> fullChainIsStop;
+	double maxHopOverall = 0.0;
+	bool allSatisfied = true;
+	set<pair<int, int>> crossedKeysAll;
+
+	for (size_t i = 0; i + 1 < legs.size(); ++i)
+	{
+		LegResult3D leg = routeBetween3D(points, islands, contacts, islandGraph, legs[i], legs[i + 1], maxHopDistance);
+		for (int id : leg.chainIds) { fullChainPoints.push_back(points[id]); fullChainIsStop.push_back(0); }
+		maxHopOverall = max(maxHopOverall, leg.maxHop);
+		allSatisfied = allSatisfied && leg.satisfied;
+		for (auto &key : leg.crossedKeys) crossedKeysAll.insert(key);
+
+		if (i + 2 < legs.size()) { fullChainPoints.push_back(legs[i + 1]); fullChainIsStop.push_back(1); }
+	}
+
+	double total = 0;
+	{
+		Point3D prev = start;
+		for (auto &p : fullChainPoints) { total += dist3D(prev, p); prev = p; }
+		total += dist3D(prev, end);
+	}
+
+	vector<Contact> bridgesUsed;
+	for (auto &kv : contacts) if (crossedKeysAll.count(kv.first)) bridgesUsed.push_back(kv.second);
+
+	TraceRouteResult3D *res = new TraceRouteResult3D();
+	res->point_count = amountPoints;
+	res->points_x = new double[amountPoints];
+	res->points_y = new double[amountPoints];
+	res->points_z = new double[amountPoints];
+	for (int i = 0; i < amountPoints; ++i) { res->points_x[i] = points[i].x; res->points_y[i] = points[i].y; res->points_z[i] = points[i].z; }
+
+	res->start_x = start.x; res->start_y = start.y; res->start_z = start.z;
+	res->end_x = end.x; res->end_y = end.y; res->end_z = end.z;
+
+	res->chain_count = (int) fullChainPoints.size();
+	res->chain_x = new double[fullChainPoints.size()];
+	res->chain_y = new double[fullChainPoints.size()];
+	res->chain_z = new double[fullChainPoints.size()];
+	res->chain_is_stop = new int[fullChainPoints.size()];
+	for (size_t i = 0; i < fullChainPoints.size(); ++i)
+	{
+		res->chain_x[i] = fullChainPoints[i].x; res->chain_y[i] = fullChainPoints[i].y; res->chain_z[i] = fullChainPoints[i].z;
+		res->chain_is_stop[i] = fullChainIsStop[i];
+	}
+
+	res->direct_distance = directDistance;
+	res->chain_distance = total;
+	res->detour_factor = directDistance ? total / directDistance : 0;
+	res->max_hop = maxHopOverall;
+	res->max_hop_satisfied = allSatisfied ? 1 : 0;
+
+	res->island_count = (int) islands.size();
+	res->island_offsets = new int[islands.size() + 1];
+	int totalIslandIds = 0;
+	for (auto &isl : islands) totalIslandIds += (int) isl.size();
+	res->island_point_ids = new int[totalIslandIds];
+	{
+		int offset = 0;
+		for (size_t i = 0; i < islands.size(); ++i)
+		{
+			res->island_offsets[i] = offset;
+			for (int id : islands[i]) res->island_point_ids[offset++] = id;
+		}
+		res->island_offsets[islands.size()] = offset;
+	}
+
+	res->bridge_count = (int) bridgesUsed.size();
+	res->bridge_ax = new double[bridgesUsed.size()];
+	res->bridge_ay = new double[bridgesUsed.size()];
+	res->bridge_az = new double[bridgesUsed.size()];
+	res->bridge_bx = new double[bridgesUsed.size()];
+	res->bridge_by = new double[bridgesUsed.size()];
+	res->bridge_bz = new double[bridgesUsed.size()];
+	for (size_t i = 0; i < bridgesUsed.size(); ++i)
+	{
+		res->bridge_ax[i] = points[bridgesUsed[i].aIdx].x;
+		res->bridge_ay[i] = points[bridgesUsed[i].aIdx].y;
+		res->bridge_az[i] = points[bridgesUsed[i].aIdx].z;
+		res->bridge_bx[i] = points[bridgesUsed[i].bIdx].x;
+		res->bridge_by[i] = points[bridgesUsed[i].bIdx].y;
+		res->bridge_bz[i] = points[bridgesUsed[i].bIdx].z;
+	}
+
+	return res;
+}
+
+__attribute__((visibility("default")))
+void free_traceroute_result3d(TraceRouteResult3D *res)
+{
+	if (!res) return;
+	delete[] res->points_x;
+	delete[] res->points_y;
+	delete[] res->points_z;
+	delete[] res->chain_x;
+	delete[] res->chain_y;
+	delete[] res->chain_z;
+	delete[] res->chain_is_stop;
+	delete[] res->island_offsets;
+	delete[] res->island_point_ids;
+	delete[] res->bridge_ax;
+	delete[] res->bridge_ay;
+	delete[] res->bridge_az;
+	delete[] res->bridge_bx;
+	delete[] res->bridge_by;
+	delete[] res->bridge_bz;
 	delete res;
 }
 

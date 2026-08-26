@@ -1,11 +1,15 @@
 (() => {
+	// Unified #form/#view (see script.js/cesium-demo.js) - this file only
+	// ever acts when #view is "3d-three", guarded in the submit handler
+	// below.
 	const container = document.getElementById("three-container");
-	const form3d = document.getElementById("form3d");
-	const info3d = document.getElementById("info3d");
-	const clickStatus3d = document.getElementById("clickStatus3d");
-	const stats3d = document.getElementById("stats3d");
-	const undoBtn3d = document.getElementById("undoPoint3d");
-	const spreadInput3d = document.getElementById("spread3d");
+	const form3d = document.getElementById("form");
+	const info3d = document.getElementById("info");
+	const clickStatus3d = document.getElementById("clickStatus");
+	const stats3d = document.getElementById("stats");
+	const undoBtn3d = document.getElementById("undoPoint");
+	const spreadInput3d = document.getElementById("spread");
+	const viewSelect3d = document.getElementById("view");
 	if (!container || !form3d) return;
 
 	const SPREAD_REF = 500; // terrain noise is tuned against this scale
@@ -318,7 +322,15 @@
 		drawPreview3d();
 	}
 
+	// #undoPoint and #spread are shared with the other two renderers (see
+	// script.js/cesium-demo.js) - every listener on them must check it's
+	// actually this renderer's turn before touching shared UI text.
+	function isActiveThree() {
+		return viewSelect3d && viewSelect3d.value === "3d-three";
+	}
+
 	function undoLastPoint3d() {
+		if (!isActiveThree()) return;
 		if (picked3d.end) picked3d.end = null;
 		else if (picked3d.waypoints.length) picked3d.waypoints.pop();
 		else if (picked3d.start) picked3d.start = null;
@@ -329,6 +341,7 @@
 
 	spreadInput3d.addEventListener("change", () => {
 		picked3d = { start: null, waypoints: [], end: null };
+		if (!isActiveThree()) return;
 		updateClickStatus3d();
 		drawPreview3d();
 	});
@@ -582,20 +595,20 @@
 
 	form3d.addEventListener("submit", async (e) => {
 		e.preventDefault();
-		// This demo is kept as a working backup behind the "Classic" engine
-		// option (see cesium-demo.js, the new default) - skip entirely
-		// unless the user actually switched to it, so it doesn't
+		// This demo is kept as a working backup behind the "3D (Three.js,
+		// backup)" view option (see cesium-demo.js, the new default) - skip
+		// entirely unless the user actually switched to it, so it doesn't
 		// initialize a second WebGL context / fire a duplicate API call
 		// every run.
-		const engineSel = document.getElementById("engine3d");
-		if (engineSel && engineSel.value !== "threejs") return;
+		if (!isActiveThree()) return;
 		if (!scene) initScene();
 
-		const amountPoints = document.getElementById("amountPoints3d").value;
+		const amountPoints = document.getElementById("amountPoints").value;
 		const spread = Number(spreadInput3d.value);
-		const maxHopDistance = document.getElementById("maxHopDistance3d").value;
+		const maxHopDistance = document.getElementById("maxHopDistance").value;
+		const engine = document.getElementById("engine").value;
 
-		const paramObj = { amountPoints, spread, maxHopDistance };
+		const paramObj = { amountPoints, spread, maxHopDistance, engine };
 		if (picked3d.start) { paramObj.startX = picked3d.start.x; paramObj.startY = picked3d.start.y; paramObj.startZ = picked3d.start.z; }
 		if (picked3d.end) { paramObj.endX = picked3d.end.x; paramObj.endY = picked3d.end.y; paramObj.endZ = picked3d.end.z; }
 		if (picked3d.waypoints.length) {
@@ -624,13 +637,19 @@
 			}
 
 			stats3d.hidden = false;
-			document.getElementById("statClosest3d").textContent = data.closest.length;
-			document.getElementById("statIslands3d").textContent = data.bridges ? data.bridges.length + 1 : 1;
-			document.getElementById("statDistance3d").textContent = data.direct_distance.toFixed(1);
-			document.getElementById("statChain3d").textContent = data.chain_distance.toFixed(1);
+			document.getElementById("statPoints").textContent = data.points.length;
+			document.getElementById("statClosest").textContent = data.closest.length;
+			document.getElementById("statIslands").textContent = data.bridges ? data.bridges.length + 1 : 1;
+			document.getElementById("statDistance").textContent = data.direct_distance.toFixed(1);
+			document.getElementById("statChain").textContent = data.chain_distance.toFixed(1);
+			document.getElementById("statDetour").textContent = `${data.detour_factor.toFixed(2)}×`;
+			document.getElementById("statMaxHop").textContent = data.max_hop.toFixed(1);
 
 			const detourGood = data.detour_factor < 1.1;
-			info3d.innerHTML = `⚡ Solved in <strong>${elapsed}ms</strong> &nbsp;·&nbsp; `
+			const engineTag = data.engine === "cpp"
+				? `<span style="color:#8b7cf6">⚙️ C++</span>`
+				: `<span style="color:#00d9c0">🐍 Python</span>`;
+			info3d.innerHTML = `${engineTag} solved in <strong>${elapsed}ms</strong> &nbsp;·&nbsp; `
 				+ `<span style="color:#00d9c0">✈️ direct ${data.direct_distance.toFixed(1)}</span> &nbsp;·&nbsp; `
 				+ `<span style="color:#ffd166">🛣️ chain ${data.chain_distance.toFixed(1)}</span> `
 				+ `<span style="color:${detourGood ? '#7ee787' : '#ff5f7e'}">(${data.detour_factor.toFixed(2)}× ${detourGood ? '🎯' : '⚠️'})</span>`;
@@ -642,5 +661,6 @@
 	});
 
 	updateClickStatus3d();
-	form3d.dispatchEvent(new Event("submit"));
+	// Auto-run-on-load is triggered once from cesium-demo.js (loaded last) -
+	// see the comment there.
 })();

@@ -67,14 +67,21 @@ def _parseWaypoints3D(waypoints: str = None):
 def traceroute3d(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 20,
 				startX: float = None, startY: float = None, startZ: float = None,
 				endX: float = None, endY: float = None, endZ: float = None,
-				waypoints: str = None):
+				waypoints: str = None, engine: str = "cpp"):
 	start = {'x': startX, 'y': startY, 'z': startZ} if None not in (startX, startY, startZ) else None
 	end = {'x': endX, 'y': endY, 'z': endZ} if None not in (endX, endY, endZ) else None
 	parsedWaypoints = _parseWaypoints3D(waypoints)
 	try:
-		return runTraceRoute3D(amountPoints, spread, maxHopDistance, start, end, parsedWaypoints)
+		if engine == "cpp":
+			result = cpp_engine.runTraceRoute3DCpp(amountPoints, spread, maxHopDistance, start, end, parsedWaypoints)
+		else:
+			result = runTraceRoute3D(amountPoints, spread, maxHopDistance, start, end, parsedWaypoints)
+			result['engine'] = 'python'
+		return result
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
+	except RuntimeError as e:
+		raise HTTPException(status_code=503, detail=str(e))
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
