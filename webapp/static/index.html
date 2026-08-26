@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TraceRoute — Energy-efficient routing without graph search</title>
-<meta name="description" content="TraceRoute finds a route between two points by drawing a straight line and picking the waypoints closest to it — no road graph, no Dijkstra, no A*. A lightweight navigation heuristic built in Python, C++ and Java.">
+<meta name="description" content="TraceRoute finds a route between two points by drawing a straight line and picking the waypoints closest to it — no per-point graph search, just projections and a sort. A lightweight navigation heuristic built in Python, C++ and Java.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -33,16 +33,16 @@
 			<p class="lede">
 				Real navigation engines build a graph of every road and search it — Dijkstra, A*,
 				thousands of nodes evaluated per query. TraceRoute tries a cheaper idea: draw a
-				straight line from A to B, and pick whichever waypoints sit closest to it. No graph,
-				no search tree — just projections and a sort. Order-of-magnitude less computation
-				per route, which means less CPU time and less energy per query.
+				straight line from A to B, and pick whichever waypoints sit closest to it. No
+				per-point graph, no priority queue — just a projection and a sort for every
+				candidate. Simpler work per query is exactly what a CPU with no cycles to spare needs.
 			</p>
 			<div class="hero-cta">
 				<a href="#demo" class="btn btn-primary">Try the routing engine ↓</a>
 				<a href="#how" class="btn btn-ghost">See how it works</a>
 			</div>
 			<div class="stack-badges">
-				<span>Same routing logic, 3 languages:</span>
+				<span>One idea, three implementations:</span>
 				<span class="badge">🐍 Python</span>
 				<span class="badge">⚙️ C++</span>
 				<span class="badge">☕ Java + JavaFX</span>
@@ -217,27 +217,31 @@
 
 		<section class="panel panel-compare">
 			<div class="panel-head">
-				<h2>Built for constrained hardware</h2>
-				<p>The same routing logic, tuned for three very different power budgets.</p>
+				<h2>Three implementations, three different jobs</h2>
+				<p>Same core idea, at different stages of maturity — the demo above runs the two that
+				are actually current.</p>
 			</div>
 			<div class="compare-grid">
 				<div class="compare-card">
 					<h3>🐍 Python</h3>
-					<span class="tag">Prototype</span>
-					<p>Where the routing heuristic was proven out — <code>matplotlib</code> made every
-					projection error visible immediately.</p>
+					<span class="tag">Web demo · reference engine</span>
+					<p>The only engine that supports client-defined mandatory stops. Where the island
+					routing and adaptive stop-spacing were proven out first — easy to read, easy to
+					change, not the fastest.</p>
 				</div>
 				<div class="compare-card">
 					<h3>⚙️ C++</h3>
-					<span class="tag">Low-power target</span>
-					<p>Manual memory management, no runtime, no GC pauses — the profile you'd want on an
-					embedded or battery-powered device.</p>
+					<span class="tag">Web demo · default engine</span>
+					<p>Same island routing, compiled to a shared library — no runtime, no GC pauses,
+					roughly an order of magnitude faster than the Python engine at a few thousand points.
+					The profile you'd want on embedded or battery-powered hardware.</p>
 				</div>
 				<div class="compare-card">
 					<h3>☕ Java</h3>
-					<span class="tag">Production</span>
-					<p>Powers this demo's routing engine, plus a native JavaFX desktop visualizer for
-					inspecting routes offline.</p>
+					<span class="tag">Original prototype</span>
+					<p>Where the core corridor-projection idea was first built, plus a native JavaFX
+					desktop visualizer for inspecting routes offline. Hasn't been upgraded with island
+					routing or mandatory stops yet — not part of this web demo.</p>
 				</div>
 			</div>
 		</section>
@@ -277,8 +281,12 @@
 				<h3>What's proven, what isn't</h3>
 				<ul>
 					<li><strong>Proven:</strong> the core geometry — projection, corridor filtering,
-					even-chain construction — runs correctly and reproducibly in Python, C++ and Java,
-					with <span class="accent-inline">O(n)</span> work per query and no graph in memory.</li>
+					even-chain construction — runs correctly and reproducibly in all three
+					implementations. The production routing (Python + C++) layers one more piece on top:
+					the map is split into islands with a <span class="accent-inline">tiny</span>
+					island-to-island graph — a handful of nodes, not one per point — so the expensive
+					per-point corridor search never runs across the whole map, only locally inside one
+					island at a time.</li>
 					<li><strong>Not yet proven:</strong> real-world routing accuracy against actual road/obstacle
 					data, and measured CPU/RAM numbers against Dijkstra/A* on target hardware. That's exactly
 					what a design partnership would establish together, on your data.</li>
