@@ -620,7 +620,11 @@ function setLoading(isLoading) {
 form.addEventListener("submit", async (e) => {
 	e.preventDefault();
 
-	const engine = document.getElementById("engine").value;
+	// C++ is the default engine, but it doesn't support mandatory waypoints
+	// yet - fall back to Python automatically instead of making the user
+	// hunt for the dropdown after hitting a 400.
+	const hasWaypoints = picked.waypoints.length > 0;
+	const engine = hasWaypoints ? "python" : document.getElementById("engine").value;
 	const spread = Number(spreadInput.value);
 	const paramObj = {
 		amountPoints: document.getElementById("amountPoints").value,
@@ -630,7 +634,7 @@ form.addEventListener("submit", async (e) => {
 	};
 	if (picked.start) { paramObj.startX = picked.start.x; paramObj.startY = picked.start.y; }
 	if (picked.end) { paramObj.endX = picked.end.x; paramObj.endY = picked.end.y; }
-	if (picked.waypoints.length) {
+	if (hasWaypoints) {
 		paramObj.waypoints = picked.waypoints.map(w => `${w.x},${w.y}`).join(";");
 	}
 	const params = new URLSearchParams(paramObj);

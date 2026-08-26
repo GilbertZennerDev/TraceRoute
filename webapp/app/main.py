@@ -25,7 +25,7 @@ def _parseWaypoints(waypoints: str = None):
 @app.get("/api/traceroute")
 def traceroute(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 20,
 				startX: float = None, startY: float = None, endX: float = None, endY: float = None,
-				waypoints: str = None, engine: str = "python"):
+				waypoints: str = None, engine: str = "cpp"):
 	start = {'x': startX, 'y': startY} if startX is not None and startY is not None else None
 	end = {'x': endX, 'y': endY} if endX is not None and endY is not None else None
 	parsedWaypoints = _parseWaypoints(waypoints)
