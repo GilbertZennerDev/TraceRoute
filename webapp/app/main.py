@@ -13,7 +13,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @app.get("/api/traceroute")
-def traceroute(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 200,
+def traceroute(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 20,
 				startX: float = None, startY: float = None, endX: float = None, endY: float = None,
 				engine: str = "python"):
 	start = {'x': startX, 'y': startY} if startX is not None and startY is not None else None
@@ -38,7 +38,7 @@ def engine_status():
 
 @app.get("/api/traceroute3d")
 def traceroute3d(amountPoints: int = 100, startIndex: int = 0, endIndex: int = 1,
-				spread: int = 500, maxHopDistance: float = 200):
+				spread: int = 500, maxHopDistance: float = 20):
 	try:
 		return runTraceRoute3D(amountPoints, startIndex, endIndex, spread, maxHopDistance)
 	except ValueError as e:
