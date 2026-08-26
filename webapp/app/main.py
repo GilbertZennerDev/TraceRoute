@@ -50,11 +50,29 @@ def engine_status():
 	return {"cpp_available": cpp_engine.is_available()}
 
 
-@app.get("/api/traceroute3d")
-def traceroute3d(amountPoints: int = 100, startIndex: int = 0, endIndex: int = 1,
-				spread: int = 500, maxHopDistance: float = 20):
+def _parseWaypoints3D(waypoints: str = None):
+	"""Query-string encoding for a list of mandatory stops: "x1,y1,z1;x2,y2,z2"."""
+	if not waypoints:
+		return None
 	try:
-		return runTraceRoute3D(amountPoints, startIndex, endIndex, spread, maxHopDistance)
+		return [
+			{'x': float(x), 'y': float(y), 'z': float(z)}
+			for x, y, z in (pair.split(",") for pair in waypoints.split(";") if pair)
+		]
+	except ValueError:
+		raise HTTPException(status_code=400, detail="Bad waypoints format, expected 'x1,y1,z1;x2,y2,z2'")
+
+
+@app.get("/api/traceroute3d")
+def traceroute3d(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 20,
+				startX: float = None, startY: float = None, startZ: float = None,
+				endX: float = None, endY: float = None, endZ: float = None,
+				waypoints: str = None):
+	start = {'x': startX, 'y': startY, 'z': startZ} if None not in (startX, startY, startZ) else None
+	end = {'x': endX, 'y': endY, 'z': endZ} if None not in (endX, endY, endZ) else None
+	parsedWaypoints = _parseWaypoints3D(waypoints)
+	try:
+		return runTraceRoute3D(amountPoints, spread, maxHopDistance, start, end, parsedWaypoints)
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 

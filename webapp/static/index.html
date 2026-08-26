@@ -186,10 +186,12 @@
 			<div class="panel-head">
 				<span class="eyebrow">Same math, one more axis</span>
 				<h2>It works in 3D too</h2>
-				<p>The projection math is just vector dot-products — it doesn't care how many coordinates
-				a point has. Here the same corridor-filter-and-chain logic runs over <code>(x, y, z)</code>
-				waypoints, flown over generated terrain so altitude actually reads visually.
-				Drag to orbit, scroll to zoom.</p>
+				<p>The same island routing and mandatory-stop logic from the 2D demo above, generalized
+				to <code>(x, y, z)</code> vector math instead of 2D slopes.
+				<strong style="color:#00d9c0">Click the terrain to set the origin</strong>, optionally
+				<strong style="color:#f4a300">Shift+click to add mandatory stops</strong>, then
+				<strong style="color:#6c5ce7">click again to set the destination</strong>. Drag to orbit,
+				scroll to zoom.</p>
 			</div>
 
 			<div class="demo-grid">
@@ -202,14 +204,48 @@
 						<span>Spread</span>
 						<input type="number" id="spread3d" value="500" min="10">
 					</label>
+					<label>
+						<span>Max distance between stops (km)</span>
+						<input type="number" id="maxHopDistance3d" value="20" min="1">
+					</label>
 					<button type="submit" class="btn btn-primary btn-block">
 						<span class="btn-label">Fly the route</span>
 						<span class="btn-spinner" aria-hidden="true"></span>
 					</button>
+
+					<div class="stats" id="stats3d" hidden>
+						<div class="stat">
+							<span class="stat-value" id="statClosest3d">–</span>
+							<span class="stat-label">stops used</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statIslands3d">–</span>
+							<span class="stat-label">islands crossed</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statDistance3d">–</span>
+							<span class="stat-label">direct distance</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value" id="statChain3d">–</span>
+							<span class="stat-label">chain distance</span>
+						</div>
+					</div>
 				</form>
 
 				<div class="canvas-wrap">
 					<div id="three-container"></div>
+					<div class="map-btn-row">
+						<button type="button" id="undoPoint3d" class="map-btn" title="Undo last placed point">↩ Undo</button>
+					</div>
+					<div class="map-legend">
+						<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
+						<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
+						<div><span class="swatch" style="background:#f4a300"></span>Mandatory stop</div>
+						<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
+						<div><span class="swatch swatch-island"></span>Island (color varies)</div>
+					</div>
+					<p id="clickStatus3d" class="canvas-info">📍 Click the terrain to set the origin</p>
 					<p id="info3d" class="canvas-info"></p>
 				</div>
 			</div>
