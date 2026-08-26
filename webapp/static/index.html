@@ -127,6 +127,15 @@
 
 				<div class="canvas-wrap">
 					<canvas id="canvas" width="900" height="600"></canvas>
+					<button type="button" id="resetView" class="map-btn" title="Reset zoom & pan">⤾ Reset view</button>
+					<div class="map-legend">
+						<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
+						<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
+						<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
+						<div><span class="swatch" style="background:#ffd166"></span>Route / bridge</div>
+						<div><span class="swatch swatch-island"></span>Island (color varies)</div>
+					</div>
+					<div id="mapTooltip" class="map-tooltip" hidden></div>
 					<p id="clickStatus" class="canvas-info">📍 Click the map to set the origin</p>
 					<p id="info" class="canvas-info"></p>
 				</div>

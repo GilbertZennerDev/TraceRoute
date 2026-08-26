@@ -288,6 +288,66 @@ canvas {
 	border: 1px solid var(--panel-border);
 	display: block;
 	cursor: crosshair;
+	transition: opacity 0.25s ease, filter 0.25s ease;
+}
+canvas.is-panning { cursor: grabbing; }
+.canvas-wrap.is-loading canvas { opacity: 0.45; filter: blur(1.5px) saturate(0.7); }
+
+.map-btn {
+	position: absolute;
+	top: 10px; right: 10px;
+	z-index: 2;
+	background: rgba(11,14,20,0.72);
+	color: var(--text-dim);
+	border: 1px solid var(--panel-border);
+	border-radius: 8px;
+	padding: 0.35rem 0.7rem;
+	font-family: var(--mono);
+	font-size: 0.75rem;
+	cursor: pointer;
+	backdrop-filter: blur(4px);
+	transition: color 0.15s ease, border-color 0.15s ease;
+}
+.map-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.map-legend {
+	position: absolute;
+	left: 10px; bottom: 10px;
+	z-index: 2;
+	background: rgba(11,14,20,0.72);
+	border: 1px solid var(--panel-border);
+	border-radius: 8px;
+	padding: 0.5rem 0.7rem;
+	font-family: var(--mono);
+	font-size: 0.68rem;
+	color: var(--text-dim);
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	backdrop-filter: blur(4px);
+	pointer-events: none;
+}
+.map-legend div { display: flex; align-items: center; gap: 0.45rem; }
+.swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.swatch-island { background: linear-gradient(135deg, #8ecae6, #ffb703, #f72585); }
+
+.map-tooltip {
+	position: absolute;
+	z-index: 3;
+	background: rgba(11,14,20,0.92);
+	border: 1px solid var(--panel-border);
+	border-radius: 6px;
+	padding: 0.3rem 0.55rem;
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	color: var(--text);
+	pointer-events: none;
+	white-space: nowrap;
+	transform: translate(-50%, -130%);
+}
+
+@media (max-width: 520px) {
+	.map-legend { font-size: 0.6rem; padding: 0.4rem 0.55rem; }
 }
 
 #three-container {

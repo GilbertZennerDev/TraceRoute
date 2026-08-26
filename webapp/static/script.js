@@ -1,5 +1,6 @@
 const form = document.getElementById("form");
 const canvas = document.getElementById("canvas");
+const canvasWrap = canvas.closest(".canvas-wrap");
 // `let`, not `const` - drawOnto() below temporarily repoints this at an
 // offscreen context so the same terrain/icon/island helpers can render
 // either the visible canvas or the cached static layer.
@@ -9,33 +10,84 @@ const clickStatus = document.getElementById("clickStatus");
 const stats = document.getElementById("stats");
 const submitBtn = form.querySelector("button[type=submit]");
 const spreadInput = document.getElementById("spread");
+const resetViewBtn = document.getElementById("resetView");
+const tooltipEl = document.getElementById("mapTooltip");
+
+// Renders at a higher internal resolution than the CSS box (capped at 2x) -
+// the canvas is displayed at a fixed CSS size regardless (see style.css),
+// so this only buys crispness on high-DPI screens; every drawing routine
+// below already works in canvas.width/height units, so this one override
+// is all that's needed - no other coordinate math changes.
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = 900 * DPR;
+canvas.height = 600 * DPR;
 
 // Lets the user click the map to place origin/destination instead of only
 // ever routing between two fixed corners. Stored in world (km) coordinates,
 // independent of canvas pixel size, so they survive a resize.
 let picked = { start: null, end: null };
 
+// Pan/zoom state, in canvas-pixel ("logical") space - panX/panY are applied
+// BEFORE the zoom scale (screen = logical * zoom + pan), so clamping and the
+// wheel-zoom-around-cursor math below stay in one consistent space.
+let view = { zoom: 1, panX: 0, panY: 0 };
+
+function clampView() {
+	view.zoom = Math.max(1, Math.min(8, view.zoom));
+	const minPanX = canvas.width - canvas.width * view.zoom;
+	const minPanY = canvas.height - canvas.height * view.zoom;
+	view.panX = Math.min(0, Math.max(minPanX, view.panX));
+	view.panY = Math.min(0, Math.max(minPanY, view.panY));
+}
+
+function resetView() {
+	view = { zoom: 1, panX: 0, panY: 0 };
+	requestRedraw();
+}
+
 function updateClickStatus() {
-	if (!picked.start) clickStatus.textContent = "📍 Click the map to set the origin";
+	if (!picked.start) clickStatus.textContent = "📍 Click the map to set the origin — scroll to zoom, drag to pan";
 	else if (!picked.end) clickStatus.textContent = "🎯 Click again to set the destination";
 	else clickStatus.textContent = "✅ Origin & destination set — click to start over, or press Run";
 }
 
-function eventToWorld(e, spread) {
+// Converts a mouse event into canvas-internal-pixel ("logical", pre-zoom)
+// coordinates - inverts the CSS-box-to-canvas-buffer ratio AND the current
+// pan/zoom transform, so hit-testing/picking stays correct at any zoom level.
+function screenToLogical(e) {
 	const rect = canvas.getBoundingClientRect();
 	const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
 	const cy = (e.clientY - rect.top) * (canvas.height / rect.height);
-	return { x: (cx / canvas.width) * spread, y: (cy / canvas.height) * spread };
+	return { x: (cx - view.panX) / view.zoom, y: (cy - view.panY) / view.zoom };
+}
+
+function eventToWorld(e, spread) {
+	const { x, y } = screenToLogical(e);
+	return { x: (x / canvas.width) * spread, y: (y / canvas.height) * spread };
 }
 
 function drawPreview() {
 	const spread = Number(spreadInput.value) || 500;
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	ctx.save();
+	ctx.translate(view.panX, view.panY);
+	ctx.scale(view.zoom, view.zoom);
 	drawTerrain(spread);
 
 	const scaleX = canvas.width / spread, scaleY = canvas.height / spread;
 	if (picked.start) drawCityIcon(picked.start.x * scaleX, picked.start.y * scaleY, 16, "#00d9c0");
 	if (picked.end) drawCityIcon(picked.end.x * scaleX, picked.end.y * scaleY, 16, "#6c5ce7");
+	ctx.restore();
+	drawScaleBar(spread);
+}
+
+// Re-renders whatever is currently on screen after a pan/zoom change. While
+// the post-Run flow animation is running it already redraws every frame on
+// its own (renderFrame reads `view` live), so this only needs to force a
+// redraw for the pre-Run click-to-pick preview.
+function requestRedraw() {
+	if (flowAnimId) return;
+	drawPreview();
 }
 
 function stopFlowAnimation() {
@@ -43,7 +95,14 @@ function stopFlowAnimation() {
 	flowAnimId = null;
 }
 
-canvas.addEventListener("click", (e) => {
+// Mousedown/mousemove/mouseup (instead of a plain "click" listener) so a
+// map drag-to-pan can be told apart from a click-to-pick - a native "click"
+// event fires after a drag too, so picking off it would set the origin/
+// destination in the wrong place every time the user pans.
+let dragState = null;
+const DRAG_THRESHOLD = 4;
+
+function handlePick(e) {
 	const spread = Number(spreadInput.value) || 500;
 	const world = eventToWorld(e, spread);
 	if (!picked.start || picked.end) {
@@ -54,14 +113,140 @@ canvas.addEventListener("click", (e) => {
 	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
+}
+
+canvas.addEventListener("mousedown", (e) => {
+	dragState = {
+		startClientX: e.clientX, startClientY: e.clientY,
+		startPanX: view.panX, startPanY: view.panY,
+		moved: false,
+	};
 });
+
+window.addEventListener("mousemove", (e) => {
+	if (dragState) {
+		const dx = e.clientX - dragState.startClientX;
+		const dy = e.clientY - dragState.startClientY;
+		if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) dragState.moved = true;
+		if (dragState.moved) {
+			const rect = canvas.getBoundingClientRect();
+			const ratio = canvas.width / rect.width;
+			view.panX = dragState.startPanX + dx * ratio;
+			view.panY = dragState.startPanY + dy * ratio;
+			clampView();
+			canvas.classList.add("is-panning");
+			requestRedraw();
+			hideTooltip();
+			return;
+		}
+	}
+	handleHover(e);
+});
+
+window.addEventListener("mouseup", (e) => {
+	if (dragState) {
+		if (!dragState.moved && e.target === canvas) handlePick(e);
+		dragState = null;
+		canvas.classList.remove("is-panning");
+	}
+});
+
+canvas.addEventListener("mouseleave", hideTooltip);
+
+canvas.addEventListener("wheel", (e) => {
+	e.preventDefault();
+	const rect = canvas.getBoundingClientRect();
+	const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+	const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+	const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+	const newZoom = Math.max(1, Math.min(8, view.zoom * factor));
+	// Keep the point under the cursor stationary on screen while zooming.
+	view.panX = mx - ((mx - view.panX) / view.zoom) * newZoom;
+	view.panY = my - ((my - view.panY) / view.zoom) * newZoom;
+	view.zoom = newZoom;
+	clampView();
+	requestRedraw();
+}, { passive: false });
+
+resetViewBtn.addEventListener("click", resetView);
 
 spreadInput.addEventListener("change", () => {
 	picked = { start: null, end: null };
 	stopFlowAnimation();
+	view = { zoom: 1, panX: 0, panY: 0 };
 	updateClickStatus();
 	drawPreview();
 });
+
+// --- hover tooltip: nearest point + which island it belongs to ---------
+
+function hideTooltip() { tooltipEl.hidden = true; }
+
+function handleHover(e) {
+	if (!flowData || !flowData.points.length) { hideTooltip(); return; }
+	const rect = canvas.getBoundingClientRect();
+	if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+		hideTooltip();
+		return;
+	}
+	const spread = Number(spreadInput.value) || 500;
+	const scaleX = canvas.width / spread, scaleY = canvas.height / spread;
+	const { x: mx, y: my } = screenToLogical(e);
+
+	const thresholdLogical = 10 * (canvas.width / rect.width) / view.zoom; // ~10 CSS px on screen
+
+	let nearest = null, nearestDistSq = thresholdLogical * thresholdLogical;
+	for (const p of flowData.points) {
+		const dx = p.x * scaleX - mx, dy = p.y * scaleY - my;
+		const distSq = dx * dx + dy * dy;
+		if (distSq < nearestDistSq) { nearestDistSq = distSq; nearest = p; }
+	}
+
+	if (!nearest) { hideTooltip(); return; }
+
+	let label = `Point #${nearest.id}`;
+	if (flowData.islands && flowData.islands.length > 1) {
+		const islandIdx = flowData.islands.findIndex(ids => ids.includes(nearest.id));
+		if (islandIdx !== -1) label += ` · Island ${islandIdx + 1} (${flowData.islands[islandIdx].length} pts)`;
+	}
+
+	const wrapRect = canvasWrap.getBoundingClientRect();
+	tooltipEl.textContent = label;
+	tooltipEl.style.left = `${e.clientX - wrapRect.left}px`;
+	tooltipEl.style.top = `${e.clientY - wrapRect.top}px`;
+	tooltipEl.hidden = false;
+}
+
+// --- scale bar -----------------------------------------------------------
+
+const SCALE_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+
+function drawScaleBar(spread) {
+	const kmPerScreenPx = (spread / canvas.width) / view.zoom;
+	const minBarPx = canvas.width * 0.08;
+	let L = SCALE_STEPS[SCALE_STEPS.length - 1];
+	for (const step of SCALE_STEPS) {
+		if (step / kmPerScreenPx >= minBarPx) { L = step; break; }
+	}
+	const barPx = L / kmPerScreenPx;
+	const marginX = canvas.width * 0.035, marginY = canvas.height * 0.055;
+	const y = canvas.height - marginY;
+	const x1 = canvas.width - marginX, x0 = x1 - barPx;
+
+	ctx.save();
+	ctx.strokeStyle = "rgba(238,241,247,0.9)";
+	ctx.fillStyle = "rgba(238,241,247,0.9)";
+	ctx.lineWidth = 2 * DPR;
+	ctx.beginPath();
+	ctx.moveTo(x0, y); ctx.lineTo(x1, y);
+	ctx.moveTo(x0, y - 5 * DPR); ctx.lineTo(x0, y + 5 * DPR);
+	ctx.moveTo(x1, y - 5 * DPR); ctx.lineTo(x1, y + 5 * DPR);
+	ctx.stroke();
+	ctx.font = `${Math.round(11 * DPR)}px 'JetBrains Mono', monospace`;
+	ctx.textAlign = "center";
+	ctx.fillText(`${L} km`, (x0 + x1) / 2, y - 8 * DPR);
+	ctx.restore();
+}
 
 // Same fractal simplex noise as the 3D terrain (three-demo.js) - reused
 // here as a top-down "topo map" background instead of an empty starfield,
@@ -93,7 +278,7 @@ function terrainColor2D(h) {
 	return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 function drawTerrain(spread) {
-	const cell = 14;
+	const cell = 14 * DPR;
 	for (let cy = 0; cy < canvas.height; cy += cell) {
 		for (let cx = 0; cx < canvas.width; cx += cell) {
 			const wx = (cx / canvas.width) * spread;
@@ -116,12 +301,25 @@ const PIN_ICON = new Path2D(
 );
 
 function drawCityIcon(x, y, size, color) {
-	const scale = size / 22;
+	const scale = (size * DPR) / 22;
 	ctx.save();
 	ctx.fillStyle = color;
 	ctx.translate(x - 12 * scale, y - 22 * scale);
 	ctx.scale(scale, scale);
 	ctx.fill(PIN_ICON);
+	ctx.restore();
+}
+
+// Plain, small points (every non-chain waypoint) get a dot instead of a pin -
+// at hundreds/thousands of points per island, pins for every single one just
+// read as clutter; a dot keeps the map legible and reserves the pin shape
+// for what actually matters: the chosen chain, start, and end.
+function drawDot(x, y, radius, color) {
+	ctx.save();
+	ctx.fillStyle = color;
+	ctx.beginPath();
+	ctx.arc(x, y, radius * DPR, 0, Math.PI * 2);
+	ctx.fill();
 	ctx.restore();
 }
 
@@ -200,7 +398,7 @@ function drawCityTexture(hull) {
 	const xs = hull.map(p => p.x), ys = hull.map(p => p.y);
 	const minX = Math.min(...xs), maxX = Math.max(...xs);
 	const minY = Math.min(...ys), maxY = Math.max(...ys);
-	const cell = 15;
+	const cell = 15 * DPR;
 
 	ctx.fillStyle = "#1c1f28";
 	ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
@@ -209,7 +407,7 @@ function drawCityTexture(hull) {
 		for (let x = minX; x < maxX; x += cell) {
 			const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
 			const h = cellHash(cx, cy);
-			const inset = 1.4 + h * 0.6;
+			const inset = (1.4 + h * 0.6) * DPR;
 			const shade = 0.12 + h * 0.22;
 			ctx.fillStyle = `rgba(255, 255, 255, ${shade})`;
 			ctx.fillRect(x + inset, y + inset, cell - inset * 2, cell - inset * 2);
@@ -220,7 +418,7 @@ function drawCityTexture(hull) {
 // Static layer (terrain + islands) is expensive to redraw (thousands of
 // terrain cells + city texture per island) - rendered once per Run into an
 // offscreen canvas, then just blitted every animation frame so the bridge
-// "flow" animation stays cheap.
+// "flow" animation and pan/zoom stay cheap.
 const staticCanvas = document.createElement("canvas");
 staticCanvas.width = canvas.width;
 staticCanvas.height = canvas.height;
@@ -258,19 +456,19 @@ function drawStaticLayer(data, spread) {
 					sctx.fillStyle = color + "2e";
 					sctx.fill();
 					sctx.strokeStyle = color + "cc";
-					sctx.lineWidth = 2.5;
+					sctx.lineWidth = 2.5 * DPR;
 					sctx.stroke();
 				}
 				for (const pid of ids) {
 					const p = data.points[pid];
-					if (p) drawCityIcon(p.x * scaleX, p.y * scaleY, 5.5, color);
+					if (p) drawDot(p.x * scaleX, p.y * scaleY, 2.4, color);
 				}
 			});
 		});
 	} else {
 		drawOnto(sctx, () => {
 			for (const p of data.points) {
-				drawCityIcon(p.x * scaleX, p.y * scaleY, 6, "rgba(255, 255, 255, 0.8)");
+				drawDot(p.x * scaleX, p.y * scaleY, 2.6, "rgba(255, 255, 255, 0.75)");
 			}
 		});
 	}
@@ -291,6 +489,8 @@ function draw(data, spread) {
 	flowData = data;
 	flowScaleX = canvas.width / spread;
 	flowScaleY = canvas.height / spread;
+	view = { zoom: 1, panX: 0, panY: 0 };
+	hideTooltip();
 	drawStaticLayer(data, spread);
 	if (flowAnimId) cancelAnimationFrame(flowAnimId);
 	animateFlow();
@@ -300,17 +500,23 @@ function draw(data, spread) {
 // pins, and bridges - the bridges get an animated, marching dash in the
 // same yellow as the chain path so island crossings visually read as part
 // of the same continuous "flow" instead of a separate disconnected line.
+// Everything except the scale bar is drawn inside the pan/zoom transform.
 function renderFrame(dashOffset) {
 	const data = flowData, scaleX = flowScaleX, scaleY = flowScaleY;
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	ctx.save();
+	ctx.translate(view.panX, view.panY);
+	ctx.scale(view.zoom, view.zoom);
+
 	ctx.drawImage(staticCanvas, 0, 0);
 
 	if (data.bridges) {
 		ctx.strokeStyle = "#ffd166";
 		ctx.shadowColor = "#ffd166";
 		ctx.shadowBlur = 6;
-		ctx.lineWidth = 2.5;
-		ctx.setLineDash([10, 8]);
+		ctx.lineWidth = 2.5 * DPR;
+		ctx.setLineDash([10 * DPR, 8 * DPR]);
 		ctx.lineDashOffset = -dashOffset;
 		for (const bridge of data.bridges) {
 			ctx.beginPath();
@@ -324,7 +530,7 @@ function renderFrame(dashOffset) {
 	}
 
 	ctx.strokeStyle = "rgba(0, 217, 192, 0.35)";
-	ctx.lineWidth = 1.5;
+	ctx.lineWidth = 1.5 * DPR;
 	ctx.beginPath();
 	ctx.moveTo(data.start.x * scaleX, data.start.y * scaleY);
 	ctx.lineTo(data.end.x * scaleX, data.end.y * scaleY);
@@ -334,7 +540,7 @@ function renderFrame(dashOffset) {
 	ctx.strokeStyle = "#ffd166";
 	ctx.shadowColor = "#ffd166";
 	ctx.shadowBlur = 5;
-	ctx.lineWidth = 2.5;
+	ctx.lineWidth = 2.5 * DPR;
 	ctx.beginPath();
 	ctx.moveTo(chainPoints[0].x * scaleX, chainPoints[0].y * scaleY);
 	for (const p of chainPoints.slice(1)) ctx.lineTo(p.x * scaleX, p.y * scaleY);
@@ -357,13 +563,17 @@ function renderFrame(dashOffset) {
 	ctx.shadowBlur = 10;
 	drawCityIcon(data.end.x * scaleX, data.end.y * scaleY, 16, "#6c5ce7");
 	ctx.shadowBlur = 0;
+
+	ctx.restore();
+
+	drawScaleBar(canvas.width / scaleX);
 }
 
 function animateFlow() {
 	let start = null;
 	function step(ts) {
 		if (start === null) start = ts;
-		const dashOffset = ((ts - start) / 1000) * 24; // px/sec, matches the [10,8] dash pattern
+		const dashOffset = ((ts - start) / 1000) * 24 * DPR; // px/sec, matches the dash pattern
 		renderFrame(dashOffset);
 		flowAnimId = requestAnimationFrame(step);
 	}
@@ -373,6 +583,7 @@ function animateFlow() {
 function setLoading(isLoading) {
 	submitBtn.classList.toggle("is-loading", isLoading);
 	submitBtn.disabled = isLoading;
+	canvasWrap.classList.toggle("is-loading", isLoading);
 }
 
 form.addEventListener("submit", async (e) => {
