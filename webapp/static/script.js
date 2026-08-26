@@ -11,6 +11,7 @@ const stats = document.getElementById("stats");
 const submitBtn = form.querySelector("button[type=submit]");
 const spreadInput = document.getElementById("spread");
 const resetViewBtn = document.getElementById("resetView");
+const undoPointBtn = document.getElementById("undoPoint");
 const tooltipEl = document.getElementById("mapTooltip");
 
 // Renders at a higher internal resolution than the CSS box (capped at 2x) -
@@ -24,8 +25,11 @@ canvas.height = 600 * DPR;
 
 // Lets the user click the map to place origin/destination instead of only
 // ever routing between two fixed corners. Stored in world (km) coordinates,
-// independent of canvas pixel size, so they survive a resize.
-let picked = { start: null, end: null };
+// independent of canvas pixel size, so they survive a resize. `waypoints`
+// are mandatory stops the route must pass through, in order - added with
+// Shift+click so a plain click still does the simple origin/destination
+// flow unchanged.
+let picked = { start: null, waypoints: [], end: null };
 
 // Pan/zoom state, in canvas-pixel ("logical") space - panX/panY are applied
 // BEFORE the zoom scale (screen = logical * zoom + pan), so clamping and the
@@ -46,9 +50,16 @@ function resetView() {
 }
 
 function updateClickStatus() {
-	if (!picked.start) clickStatus.textContent = "📍 Click the map to set the origin — scroll to zoom, drag to pan";
-	else if (!picked.end) clickStatus.textContent = "🎯 Click again to set the destination";
-	else clickStatus.textContent = "✅ Origin & destination set — click to start over, or press Run";
+	if (!picked.start) {
+		clickStatus.textContent = "📍 Click the map to set the origin — scroll to zoom, drag to pan";
+	} else if (!picked.end) {
+		const n = picked.waypoints.length;
+		clickStatus.textContent = n
+			? `🚩 ${n} mandatory stop${n > 1 ? "s" : ""} added — Shift+click to add more, click to set the destination`
+			: "🎯 Click to set the destination — or Shift+click to add a mandatory stop first";
+	} else {
+		clickStatus.textContent = "✅ Route set — click to start over";
+	}
 }
 
 // Converts a mouse event into canvas-internal-pixel ("logical", pre-zoom)
@@ -76,6 +87,7 @@ function drawPreview() {
 
 	const scaleX = canvas.width / spread, scaleY = canvas.height / spread;
 	if (picked.start) drawCityIcon(picked.start.x * scaleX, picked.start.y * scaleY, 16, "#00d9c0");
+	for (const w of picked.waypoints) drawCityIcon(w.x * scaleX, w.y * scaleY, 14, "#f4a300");
 	if (picked.end) drawCityIcon(picked.end.x * scaleX, picked.end.y * scaleY, 16, "#6c5ce7");
 	ctx.restore();
 	drawScaleBar(spread);
@@ -106,10 +118,24 @@ function handlePick(e) {
 	const spread = Number(spreadInput.value) || 500;
 	const world = eventToWorld(e, spread);
 	if (!picked.start || picked.end) {
-		picked = { start: world, end: null };
+		// Starting a new route (first click, or clicking again after a
+		// route was already completed) always resets - a plain click never
+		// silently keeps stale mandatory stops around.
+		picked = { start: world, waypoints: [], end: null };
+	} else if (e.shiftKey) {
+		picked.waypoints.push(world);
 	} else {
 		picked.end = world;
 	}
+	stopFlowAnimation();
+	updateClickStatus();
+	drawPreview();
+}
+
+function undoLastPoint() {
+	if (picked.end) picked.end = null;
+	else if (picked.waypoints.length) picked.waypoints.pop();
+	else if (picked.start) picked.start = null;
 	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
@@ -169,9 +195,10 @@ canvas.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 resetViewBtn.addEventListener("click", resetView);
+undoPointBtn.addEventListener("click", undoLastPoint);
 
 spreadInput.addEventListener("change", () => {
-	picked = { start: null, end: null };
+	picked = { start: null, waypoints: [], end: null };
 	stopFlowAnimation();
 	view = { zoom: 1, panX: 0, panY: 0 };
 	updateClickStatus();
@@ -547,10 +574,14 @@ function renderFrame(dashOffset) {
 	ctx.stroke();
 	ctx.shadowBlur = 0;
 
-	ctx.shadowColor = "#ff5f7e";
-	ctx.shadowBlur = 12;
+	// Mandatory waypoints (client-placed, Shift+click) get a bigger amber
+	// pin so they read as "required stop" - distinct from the smaller red
+	// pins the algorithm picked on its own.
 	for (const p of data.chain) {
-		drawCityIcon(p.x * scaleX, p.y * scaleY, 13, "#ff5f7e");
+		const isStop = p.is_stop === true;
+		ctx.shadowColor = isStop ? "#f4a300" : "#ff5f7e";
+		ctx.shadowBlur = isStop ? 14 : 12;
+		drawCityIcon(p.x * scaleX, p.y * scaleY, isStop ? 17 : 13, isStop ? "#f4a300" : "#ff5f7e");
 	}
 	ctx.shadowBlur = 0;
 
@@ -599,6 +630,9 @@ form.addEventListener("submit", async (e) => {
 	};
 	if (picked.start) { paramObj.startX = picked.start.x; paramObj.startY = picked.start.y; }
 	if (picked.end) { paramObj.endX = picked.end.x; paramObj.endY = picked.end.y; }
+	if (picked.waypoints.length) {
+		paramObj.waypoints = picked.waypoints.map(w => `${w.x},${w.y}`).join(";");
+	}
 	const params = new URLSearchParams(paramObj);
 
 	setLoading(true);

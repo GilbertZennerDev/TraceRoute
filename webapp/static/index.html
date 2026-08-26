@@ -55,7 +55,9 @@
 			<div class="panel-head">
 				<h2>Try it as a router</h2>
 				<p>Think of the dots as waypoints — intersections, charging stations, delivery stops.
-				<strong style="color:#00d9c0">Click the map to set the origin</strong>, then
+				<strong style="color:#00d9c0">Click the map to set the origin</strong>, optionally
+				<strong style="color:#f4a300">Shift+click to add mandatory stops</strong> the route must
+				pass through in order, then
 				<strong style="color:#6c5ce7">click again to set the destination</strong>. The
 				<strong style="color:#ff5f7e">🔴 red points</strong> are the route TraceRoute picked,
 				connected by the <strong style="color:#ffd166">🟡 yellow path</strong> it would actually
@@ -84,8 +86,8 @@
 					<label>
 						<span>Engine</span>
 						<select id="engine">
-							<option value="python" selected>🐍 Python (islands)</option>
-							<option value="cpp">⚙️ C++ (islands)</option>
+							<option value="python" selected>🐍 Python (islands + mandatory stops)</option>
+							<option value="cpp">⚙️ C++ (islands, no mandatory stops yet)</option>
 						</select>
 					</label>
 					<button type="submit" class="btn btn-primary btn-block">
@@ -127,10 +129,14 @@
 
 				<div class="canvas-wrap">
 					<canvas id="canvas" width="900" height="600"></canvas>
-					<button type="button" id="resetView" class="map-btn" title="Reset zoom & pan">⤾ Reset view</button>
+					<div class="map-btn-row">
+						<button type="button" id="undoPoint" class="map-btn" title="Undo last placed point">↩ Undo</button>
+						<button type="button" id="resetView" class="map-btn" title="Reset zoom & pan">⤾ Reset view</button>
+					</div>
 					<div class="map-legend">
 						<div><span class="swatch" style="background:#00d9c0"></span>Origin</div>
 						<div><span class="swatch" style="background:#6c5ce7"></span>Destination</div>
+						<div><span class="swatch" style="background:#f4a300"></span>Mandatory stop</div>
 						<div><span class="swatch" style="background:#ff5f7e"></span>Chain stop</div>
 						<div><span class="swatch" style="background:#ffd166"></span>Route / bridge</div>
 						<div><span class="swatch swatch-island"></span>Island (color varies)</div>

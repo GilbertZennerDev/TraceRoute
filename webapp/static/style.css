@@ -293,10 +293,15 @@ canvas {
 canvas.is-panning { cursor: grabbing; }
 .canvas-wrap.is-loading canvas { opacity: 0.45; filter: blur(1.5px) saturate(0.7); }
 
-.map-btn {
+.map-btn-row {
 	position: absolute;
 	top: 10px; right: 10px;
 	z-index: 2;
+	display: flex;
+	gap: 0.5rem;
+}
+
+.map-btn {
 	background: rgba(11,14,20,0.72);
 	color: var(--text-dim);
 	border: 1px solid var(--panel-border);

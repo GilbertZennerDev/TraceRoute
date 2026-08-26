@@ -308,46 +308,37 @@ def checks(amountPoints):
 	if amountPoints < 2: raise ValueError("Bad Args")
 
 
-def runTraceRoute(amountPoints, spread, maxHopDistance=20, start=None, end=None):
+def routeBetween(points, islands, contacts, islandGraph, a, b, maxHopDistance):
 	"""
-	start/end are plain {'x', 'y'} coords, independent of the generated
-	point cloud - lets a caller pass whatever coordinates a user clicked
-	on a map instead of only ever routing between the two opposite
-	corners. Default to those corners when not given.
+	Routes hierarchically from a to b (see the "NYC principle" block above):
+	crosses the tiny island-to-island graph to pick which islands the route
+	passes through, then runs the cheap corridor+chain algorithm locally
+	inside one island at a time. Pulled out of runTraceRoute so a route with
+	mandatory waypoints can call it once per leg (start->wp1, wp1->wp2, ...,
+	wpN->end) and reuse the SAME islands/contacts every time, instead of
+	re-clustering the whole map per leg.
 
-	Routes hierarchically by default (see the "NYC principle" block
-	above): the map is split into islands, a tiny graph of island-to-
-	island bridges is crossed to pick which islands the route passes
-	through, and the cheap corridor+chain algorithm only ever runs
-	locally inside one island at a time.
+	Returns (chainPoints, maxHop, satisfied, crossedKeys) - chainPoints is a
+	list of point dicts (not ids), since a/b aren't necessarily points from
+	the generated cloud (they're whatever coords the caller passed in).
 	"""
-	checks(amountPoints)
-
-	points = genPoints(amountPoints, spread)
-	start = dict(start) if start else {'x': 0, 'y': 0}
-	end = dict(end) if end else {'x': spread, 'y': spread}
-	direct_distance = getDistTwoPoints(start, end)
-
-	numIslands = pickIslandCount(amountPoints)
-	islands = clusterIslands(points, numIslands)
-	contacts = findContactPoints(islands)
-	islandGraph = buildIslandGraph(len(islands), contacts)
-
-	startIsland = nearestIslandIndex(islands, start)
-	endIsland = nearestIslandIndex(islands, end)
+	startIsland = nearestIslandIndex(islands, a)
+	endIsland = nearestIslandIndex(islands, b)
 	islandPath = dijkstraIslands(islandGraph, startIsland, endIsland) if startIsland != endIsland else [startIsland]
 	if islandPath is None: islandPath = [startIsland, endIsland]  # disconnected islands: best-effort straight hop
 
-	fullChainIds = []
-	current = start
+	chainPoints = []
+	current = a
 	maxHopOverall = 0.0
 	allSatisfied = True
+	crossedKeys = set()
 	for idx, islandIdx in enumerate(islandPath):
 		islandIds = [p['id'] for p in islands[islandIdx]]
 		crossing = idx < len(islandPath) - 1
 		if crossing:
 			nextIsland = islandPath[idx + 1]
 			key = (islandIdx, nextIsland) if islandIdx < nextIsland else (nextIsland, islandIdx)
+			crossedKeys.add(key)
 			c = contacts.get(key)
 			# 'a' always belongs to the lower-indexed island of the pair, 'b'
 			# to the higher one - pick whichever side actually sits on the
@@ -357,15 +348,15 @@ def runTraceRoute(amountPoints, spread, maxHopDistance=20, start=None, end=None)
 				myPoint = c['a'] if islandIdx < nextIsland else c['b']
 				theirPoint = c['b'] if islandIdx < nextIsland else c['a']
 			else:
-				myPoint = theirPoint = end
+				myPoint = theirPoint = b
 			exitPoint = myPoint
 		else:
-			exitPoint = end
+			exitPoint = b
 
 		corridorIds = buildCorridorIds(points, islandIds, current, exitPoint)
 		best = findChainWithMaxHop(corridorIds, points, current, exitPoint, maxHopDistance)
 		if best:
-			fullChainIds.extend(best['chainIds'])
+			chainPoints.extend(points[cid] for cid in best['chainIds'])
 			maxHopOverall = max(maxHopOverall, best['max_hop'])
 			allSatisfied = allSatisfied and best['satisfied']
 		else:
@@ -373,30 +364,83 @@ def runTraceRoute(amountPoints, spread, maxHopDistance=20, start=None, end=None)
 			allSatisfied = False
 
 		if crossing:
-			fullChainIds.append(myPoint['id'])
+			chainPoints.append(myPoint)
 			if theirPoint['id'] != myPoint['id']:
-				fullChainIds.append(theirPoint['id'])
+				chainPoints.append(theirPoint)
 			current = theirPoint
 		else:
 			current = exitPoint
 
-	chain_full = [points[cid] for cid in fullChainIds]
-	chain_distance = getChainDistance(fullChainIds, points, start, end)
+	return chainPoints, maxHopOverall, allSatisfied, crossedKeys
+
+
+def runTraceRoute(amountPoints, spread, maxHopDistance=20, start=None, end=None, waypoints=None):
+	"""
+	start/end are plain {'x', 'y'} coords, independent of the generated
+	point cloud - lets a caller pass whatever coordinates a user clicked
+	on a map instead of only ever routing between the two opposite
+	corners. Default to those corners when not given.
+
+	waypoints (optional) is a list of {'x', 'y'} mandatory stops the route
+	MUST pass through, in the given order - e.g. required delivery/pickup
+	stops a client places in addition to origin/destination. The route is
+	built leg by leg (start -> wp1 -> wp2 -> ... -> end), each leg routed
+	with the exact same hierarchical island logic as a plain start->end
+	route (see routeBetween above), sharing one island clustering for the
+	whole map so results stay consistent leg to leg.
+	"""
+	checks(amountPoints)
+
+	points = genPoints(amountPoints, spread)
+	start = dict(start) if start else {'x': 0, 'y': 0}
+	end = dict(end) if end else {'x': spread, 'y': spread}
+	waypoints = [dict(w) for w in waypoints] if waypoints else []
+	direct_distance = getDistTwoPoints(start, end)
+
+	numIslands = pickIslandCount(amountPoints)
+	islands = clusterIslands(points, numIslands)
+	contacts = findContactPoints(islands)
+	islandGraph = buildIslandGraph(len(islands), contacts)
+
+	legs = [start] + waypoints + [end]
+	fullChainPoints = []
+	maxHopOverall = 0.0
+	allSatisfied = True
+	crossedKeysAll = set()
+	for i in range(len(legs) - 1):
+		a, b = legs[i], legs[i + 1]
+		segChain, maxHop, satisfied, crossedKeys = routeBetween(points, islands, contacts, islandGraph, a, b, maxHopDistance)
+		fullChainPoints.extend(segChain)
+		maxHopOverall = max(maxHopOverall, maxHop)
+		allSatisfied = allSatisfied and satisfied
+		crossedKeysAll |= crossedKeys
+		if i < len(legs) - 2:
+			# The mandatory waypoint itself becomes part of the drawn chain,
+			# flagged so the frontend can render it distinctly from an
+			# auto-picked corridor point.
+			marker = dict(b)
+			marker['is_stop'] = True
+			fullChainPoints.append(marker)
+
+	chain_full = fullChainPoints
+	chain_distance = 0.0
+	prev = start
+	for p in fullChainPoints:
+		chain_distance += getDistTwoPoints(prev, p)
+		prev = p
+	chain_distance += getDistTwoPoints(prev, end)
 	detour_factor = chain_distance / direct_distance if direct_distance else 1.0
 
-	crossedKeys = set()
-	for t in range(len(islandPath) - 1):
-		i, j = islandPath[t], islandPath[t + 1]
-		crossedKeys.add((i, j) if i < j else (j, i))
 	bridgesUsed = [
 		{'a': {'x': c['a']['x'], 'y': c['a']['y']}, 'b': {'x': c['b']['x'], 'y': c['b']['y']}}
-		for key, c in contacts.items() if key in crossedKeys
+		for key, c in contacts.items() if key in crossedKeysAll
 	]
 
 	return {
 		'points': points,
 		'start': start,
 		'end': end,
+		'waypoints': waypoints,
 		'closest': chain_full,
 		'direct_distance': direct_distance,
 		'chain': chain_full,

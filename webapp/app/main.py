@@ -12,17 +12,31 @@ app = FastAPI(title="TraceRoute")
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+def _parseWaypoints(waypoints: str = None):
+	"""Query-string encoding for a list of mandatory stops: "x1,y1;x2,y2"."""
+	if not waypoints:
+		return None
+	try:
+		return [{'x': float(x), 'y': float(y)} for x, y in (pair.split(",") for pair in waypoints.split(";") if pair)]
+	except ValueError:
+		raise HTTPException(status_code=400, detail="Bad waypoints format, expected 'x1,y1;x2,y2'")
+
+
 @app.get("/api/traceroute")
 def traceroute(amountPoints: int = 100, spread: int = 500, maxHopDistance: float = 20,
 				startX: float = None, startY: float = None, endX: float = None, endY: float = None,
-				engine: str = "python"):
+				waypoints: str = None, engine: str = "python"):
 	start = {'x': startX, 'y': startY} if startX is not None and startY is not None else None
 	end = {'x': endX, 'y': endY} if endX is not None and endY is not None else None
+	parsedWaypoints = _parseWaypoints(waypoints)
 	try:
 		if engine == "cpp":
+			if parsedWaypoints:
+				raise HTTPException(status_code=400,
+					detail="Mandatory waypoints aren't supported by the C++ engine yet - switch to Python.")
 			result = cpp_engine.runTraceRouteCpp(amountPoints, spread, maxHopDistance, start, end)
 		else:
-			result = runTraceRoute(amountPoints, spread, maxHopDistance, start, end)
+			result = runTraceRoute(amountPoints, spread, maxHopDistance, start, end, parsedWaypoints)
 			result['engine'] = 'python'
 		return result
 	except ValueError as e:
