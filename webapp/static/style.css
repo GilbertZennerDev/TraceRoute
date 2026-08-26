@@ -355,7 +355,7 @@ canvas.is-panning { cursor: grabbing; }
 	.map-legend { font-size: 0.6rem; padding: 0.4rem 0.55rem; }
 }
 
-#three-container {
+.demo3d-viewport {
 	position: relative;
 	width: 100%;
 	aspect-ratio: 900 / 600;
@@ -365,8 +365,23 @@ canvas.is-panning { cursor: grabbing; }
 	overflow: hidden;
 	cursor: grab;
 }
-#three-container:active { cursor: grabbing; }
+.demo3d-viewport:active { cursor: grabbing; }
+
+/* CesiumJS and Three.js each get the full viewport, toggled via [hidden] -
+   see the coordinator script at the bottom of index.html. */
+#cesium-container, #three-container {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
 #three-container canvas { display: block; width: 100% !important; height: 100% !important; }
+
+/* Cesium's own UI chrome (attribution/credit link, base widgets) doesn't
+   match this site's dark glass aesthetic - trimmed down to just the
+   required data-attribution link, restyled to sit quietly in the corner. */
+.cesium-viewer-bottom { display: none; }
+.cesium-widget-credits { display: none !important; }
 
 .canvas-info {
 	margin: 0.7rem 0 0;

@@ -12,6 +12,9 @@
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://unpkg.com/simplex-noise@2.4.0/simplex-noise.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.141.0/Build/Cesium/Widgets/widgets.css">
+<script>window.CESIUM_BASE_URL = "https://cdn.jsdelivr.net/npm/cesium@1.141.0/Build/Cesium/";</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.141.0/Build/Cesium/Cesium.js"></script>
 </head>
 <body>
 
@@ -208,6 +211,13 @@
 						<span>Max distance between stops (km)</span>
 						<input type="number" id="maxHopDistance3d" value="20" min="1">
 					</label>
+					<label>
+						<span>Engine</span>
+						<select id="engine3d">
+							<option value="cesium" selected>🌍 CesiumJS (new default)</option>
+							<option value="threejs">🎮 Three.js (classic / backup)</option>
+						</select>
+					</label>
 					<button type="submit" class="btn btn-primary btn-block">
 						<span class="btn-label">Fly the route</span>
 						<span class="btn-spinner" aria-hidden="true"></span>
@@ -234,7 +244,9 @@
 				</form>
 
 				<div class="canvas-wrap">
-					<div id="three-container">
+					<div class="demo3d-viewport">
+						<div id="cesium-container"></div>
+						<div id="three-container" hidden></div>
 						<div class="map-btn-row">
 							<button type="button" id="undoPoint3d" class="map-btn" title="Undo last placed point">↩ Undo</button>
 						</div>
@@ -345,5 +357,23 @@
 
 	<script src="script.js"></script>
 	<script src="three-demo.js"></script>
+	<script src="cesium-demo.js"></script>
+	<script>
+		// Coordinates which 3D viewport is visible - the two demo engines
+		// (three-demo.js, cesium-demo.js) each guard their own submit
+		// handler on this same #engine3d select, so this only needs to
+		// own showing/hiding the right container.
+		(() => {
+			const select = document.getElementById("engine3d");
+			const cesiumEl = document.getElementById("cesium-container");
+			const threeEl = document.getElementById("three-container");
+			if (!select || !cesiumEl || !threeEl) return;
+			select.addEventListener("change", () => {
+				const isCesium = select.value === "cesium";
+				cesiumEl.hidden = !isCesium;
+				threeEl.hidden = isCesium;
+			});
+		})();
+	</script>
 </body>
 </html>

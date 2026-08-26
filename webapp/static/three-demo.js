@@ -582,6 +582,13 @@
 
 	form3d.addEventListener("submit", async (e) => {
 		e.preventDefault();
+		// This demo is kept as a working backup behind the "Classic" engine
+		// option (see cesium-demo.js, the new default) - skip entirely
+		// unless the user actually switched to it, so it doesn't
+		// initialize a second WebGL context / fire a duplicate API call
+		// every run.
+		const engineSel = document.getElementById("engine3d");
+		if (engineSel && engineSel.value !== "threejs") return;
 		if (!scene) initScene();
 
 		const amountPoints = document.getElementById("amountPoints3d").value;
