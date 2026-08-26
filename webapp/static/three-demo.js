@@ -87,7 +87,7 @@
 	}
 
 	let scene, camera, renderer, controls;
-	let terrainGroup, terrainMesh, waterMesh, pointsGroup, previewGroup;
+	let terrainGroup, terrainMesh, waterMesh, pointsGroup, previewGroup, buildingsGroup;
 	let routeCurve = null, flowMarker = null, flowStart = 0;
 	const raycaster = new THREE.Raycaster();
 	const mouseNDC = new THREE.Vector2();
@@ -355,6 +355,110 @@
 		return new THREE.Vector3(sx, ground + 1.5, sz);
 	}
 
+	// Monotone-chain convex hull in algorithm-space (x, y only) - same
+	// algorithm as convexHull() in script.js, duplicated here since this
+	// file is a standalone IIFE with no shared module system to import it
+	// from (same reasoning as ISLAND_COLORS above).
+	function convexHull2D(pts) {
+		if (pts.length < 3) return pts;
+		const sorted = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+		const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+		const lower = [];
+		for (const p of sorted) {
+			while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+			lower.push(p);
+		}
+		const upper = [];
+		for (let i = sorted.length - 1; i >= 0; i--) {
+			const p = sorted[i];
+			while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+			upper.push(p);
+		}
+		upper.pop();
+		lower.pop();
+		return lower.concat(upper);
+	}
+
+	function pointInPolygon(poly, x, y) {
+		let inside = false;
+		for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+			const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+			const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+			if (intersect) inside = !inside;
+		}
+		return inside;
+	}
+
+	// Extrudes each island's 2D footprint (convex hull of its points) into a
+	// scatter of low-poly "buildings" - see the research this was based on:
+	// a real 3D city reads through extruded building footprints, not a
+	// colored point cloud. One InstancedMesh per island (a single draw call
+	// each) keeps this cheap even with dozens of buildings per island.
+	function buildIslandBuildings(data, spread) {
+		clearGroup(buildingsGroup);
+		buildingsGroup = new THREE.Group();
+
+		if (!data.islands || data.islands.length <= 1) {
+			scene.add(buildingsGroup);
+			return;
+		}
+
+		const pointById = new Map(data.points.map(p => [p.id, p]));
+		const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+		const dummy = new THREE.Object3D();
+		const step = Math.max(6, spread * 0.035);
+		const maxPerIsland = 55;
+
+		data.islands.forEach((ids, islandIdx) => {
+			const pts = ids.map(id => pointById.get(id)).filter(Boolean);
+			if (pts.length < 3) return;
+			const hull = convexHull2D(pts);
+			if (hull.length < 3) return;
+
+			const minX = Math.min(...hull.map(p => p.x)), maxX = Math.max(...hull.map(p => p.x));
+			const minY = Math.min(...hull.map(p => p.y)), maxY = Math.max(...hull.map(p => p.y));
+
+			const spots = [];
+			for (let y = minY; y <= maxY; y += step) {
+				for (let x = minX; x <= maxX; x += step) {
+					if (!pointInPolygon(hull, x, y)) continue;
+					if (Math.random() > 0.72) continue; // organic gaps, not a solid grid
+					spots.push({ x, y });
+					if (spots.length >= maxPerIsland) break;
+				}
+				if (spots.length >= maxPerIsland) break;
+			}
+			if (!spots.length) return;
+
+			const mat = new THREE.MeshStandardMaterial({
+				color: ISLAND_COLORS[islandIdx % ISLAND_COLORS.length],
+				emissive: ISLAND_COLORS[islandIdx % ISLAND_COLORS.length], emissiveIntensity: 0.08,
+				roughness: 0.75, flatShading: true,
+			});
+			const mesh = new THREE.InstancedMesh(boxGeo, mat, spots.length);
+			mesh.castShadow = true;
+			mesh.receiveShadow = true;
+
+			spots.forEach((spot, i) => {
+				const w = step * (0.35 + Math.random() * 0.25);
+				const depth = step * (0.35 + Math.random() * 0.25);
+				const height = 4 + Math.random() * 24;
+				const ground = terrainHeight(spot.x, spot.y);
+
+				dummy.position.set(spot.x - spread / 2, ground + height / 2, spot.y - spread / 2);
+				dummy.scale.set(w, height, depth);
+				dummy.rotation.y = Math.random() * Math.PI * 2;
+				dummy.updateMatrix();
+				mesh.setMatrixAt(i, dummy.matrix);
+			});
+			mesh.instanceMatrix.needsUpdate = true;
+
+			buildingsGroup.add(mesh);
+		});
+
+		scene.add(buildingsGroup);
+	}
+
 	function buildPoints(data, spread) {
 		clearGroup(pointsGroup);
 		clearGroup(previewGroup);
@@ -485,6 +589,7 @@
 
 			buildTerrain(spread);
 			buildPoints(data, spread);
+			buildIslandBuildings(data, spread);
 			if (!picked3d.start) {
 				camera.position.set(spread * 0.9, spread * 0.65, spread * 0.9);
 				controls.target.set(0, 0, 0);
