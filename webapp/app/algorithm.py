@@ -9,6 +9,8 @@ import heapq
 from math import sqrt as sqrt
 from math import acos as acos
 
+from matching_engine.metrics import point_to_line_distance
+
 
 def genPoints(amount, spread):
 	points = [{'id': i, 'x': r.randint(0, spread), 'y': r.randint(0, spread)} for i in range(amount)]
@@ -17,23 +19,18 @@ def genPoints(amount, spread):
 def getPointPos(points, _id):
 	return points[_id]
 
-def getLineEquation(p1, p2):
-	a = (p2['y'] - p1['y'])/(p2['x'] - p1['x'])
-	b = p1['y'] - a * p1['x']
-	return a, b
-
-def getOrthoLine(a, point):
-	if a != 0: a_o = - 1 / a
-	else: a_o = - 1 / 0.001
-	b_o = point['y'] - a_o * point['x']
-	return a_o, b_o
-
-def getIntersectPoint(a, b, a_o, b_o):
-	div = (a - a_o)
-	if div == 0: div = 0.001
-	x_inter = (b_o - b)/div
-	y_inter = a_o * x_inter + b_o
-	return x_inter, y_inter
+def projectOntoLine(start, end, point):
+	"""Parametric projection of `point` onto the infinite line through
+	`start` and `end`. Replaces the old slope-intercept approach (which
+	needed a 1/0.001 hack to avoid dividing by zero for vertical/horizontal
+	lines) with plain vector math that handles every line orientation."""
+	x1, y1 = start['x'], start['y']
+	x2, y2 = end['x'], end['y']
+	dx, dy = x2 - x1, y2 - y1
+	if dx == 0 and dy == 0:
+		return {'x': x1, 'y': y1}
+	t = ((point['x'] - x1) * dx + (point['y'] - y1) * dy) / (dx * dx + dy * dy)
+	return {'x': x1 + t * dx, 'y': y1 + t * dy}
 
 def getDistTwoPoints(p1, p2):
 	return ((p2['y'] - p1['y'])**2 + (p2['x'] - p1['x'])**2)**.5
@@ -183,16 +180,14 @@ def buildCorridorIds(points, candidateIds, start, end):
 	onto the start->end line actually falls between them - the same
 	filter runTraceRoute always used, pulled out so it can be reused for
 	a whole map OR scoped to a single island's points (see below)."""
-	a, b = getLineEquation(start, end)
+	line = ((start['x'], start['y']), (end['x'], end['y']))
 	dist_arr = []
 	intersect_arr = []
 	for pid in candidateIds:
 		p = points[pid]
-		a_o, b_o = getOrthoLine(a, p)
-		x_inter, y_inter = getIntersectPoint(a, b, a_o, b_o)
-		p1 = {'x': x_inter, 'y': y_inter}
+		p1 = projectOntoLine(start, end, p)
 		intersect_arr.append({'id': p['id'], 'p': p1})
-		distance = getDistTwoPoints(p1, p)
+		distance = point_to_line_distance(line, (p['x'], p['y']))
 		dist_arr.append({'id': p['id'], 'distance': round(distance, 0)})
 	dist_arr_sorted = sorted(dist_arr, key=lambda x: x['distance'])
 	corridorPoints = xClosestPoints(dist_arr_sorted, len(dist_arr_sorted), intersect_arr, start, end)
