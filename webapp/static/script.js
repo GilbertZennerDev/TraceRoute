@@ -13,6 +13,62 @@ const spreadInput = document.getElementById("spread");
 const resetViewBtn = document.getElementById("resetView");
 const undoPointBtn = document.getElementById("undoPoint");
 const tooltipEl = document.getElementById("mapTooltip");
+const demoProgressEl = document.getElementById("demoProgress");
+const demoProgressBarEl = document.getElementById("demoProgressBar");
+
+// --- Demo mode (?demo=1) ---------------------------------------------------
+// Purely presentational: pre-seeds visually rich input values and adds a
+// couple of animation touches for screen recording. Gated entirely behind
+// the query param so normal (non-demo) usage is byte-for-byte unchanged.
+const IS_DEMO = new URLSearchParams(location.search).get("demo") === "1";
+if (IS_DEMO) {
+	document.body.classList.add("demo-mode");
+	const amountPointsInput = document.getElementById("amountPoints");
+	const maxHopInput = document.getElementById("maxHopDistance");
+	// Denser point cloud + tighter hop cap than the plain defaults (600/500/20)
+	// so islands, bridges, and a longer chain all show up on the very first
+	// auto-run instead of a sparse, empty-looking map.
+	if (amountPointsInput) amountPointsInput.value = "1400";
+	if (spreadInput) spreadInput.value = "900";
+	if (maxHopInput) maxHopInput.value = "18";
+}
+
+// Smoothly counts a stat element's text up from its current numeric value to
+// `target` over `duration`ms, formatting with `decimals` and an optional
+// `suffix` (e.g. "×") - only used in demo mode, so the plain instant
+// textContent assignment in the submit handler stays unchanged otherwise.
+function animateCountUp(el, target, decimals = 0, suffix = "", duration = 700) {
+	const startVal = parseFloat(el.textContent) || 0;
+	const startTime = performance.now();
+	function tick(now) {
+		const t = Math.min(1, (now - startTime) / duration);
+		const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+		const val = startVal + (target - startVal) * eased;
+		el.textContent = `${val.toFixed(decimals)}${suffix}`;
+		if (t < 1) requestAnimationFrame(tick);
+	}
+	requestAnimationFrame(tick);
+}
+
+// Drives the thin progress bar under the map while a request is in flight.
+// Real solve time is a handful of milliseconds - far too fast to read on a
+// screen recording - so this stretches the visible "computing" state into a
+// deliberate fill instead of a jump cut, purely in demo mode.
+function demoProgressStart() {
+	if (!IS_DEMO || !demoProgressEl) return;
+	demoProgressBarEl.style.transition = "none";
+	demoProgressBarEl.style.width = "0%";
+	// Force reflow so the transition below re-applies from 0%.
+	void demoProgressBarEl.offsetWidth;
+	demoProgressBarEl.style.transition = "";
+	demoProgressEl.classList.add("is-active");
+	requestAnimationFrame(() => { demoProgressBarEl.style.width = "88%"; });
+}
+function demoProgressFinish() {
+	if (!IS_DEMO || !demoProgressEl) return;
+	demoProgressBarEl.style.width = "100%";
+	setTimeout(() => demoProgressEl.classList.remove("is-active"), 350);
+}
 
 // Renders at a higher internal resolution than the CSS box (capped at 2x) -
 // the canvas is displayed at a fixed CSS size regardless (see style.css),
@@ -531,6 +587,12 @@ function draw(data, spread) {
 	drawStaticLayer(data, spread);
 	if (flowAnimId) cancelAnimationFrame(flowAnimId);
 	animateFlow();
+	if (IS_DEMO) {
+		// Re-trigger the CSS fade-in on every fresh route, not just the first.
+		canvas.classList.remove("demo-fade-in");
+		void canvas.offsetWidth;
+		canvas.classList.add("demo-fade-in");
+	}
 }
 
 // Renders one frame: the cached static layer, plus the direct line, chain,
@@ -625,6 +687,7 @@ function setLoading(isLoading) {
 	submitBtn.classList.toggle("is-loading", isLoading);
 	submitBtn.disabled = isLoading;
 	canvasWrap.classList.toggle("is-loading", isLoading);
+	if (isLoading) demoProgressStart(); else demoProgressFinish();
 }
 
 form.addEventListener("submit", async (e) => {
@@ -668,16 +731,32 @@ form.addEventListener("submit", async (e) => {
 		const data = await res.json();
 		const elapsed = (performance.now() - started).toFixed(0);
 
+		// Real solve time is a handful of ms - too fast to read as "computing"
+		// on a screen recording - so demo mode holds the loading state open a
+		// beat longer, matching the progress-bar fill in demoProgressStart().
+		if (IS_DEMO) await new Promise((resolve) => setTimeout(resolve, 550));
+
 		draw(data, spread);
 
 		stats.hidden = false;
-		document.getElementById("statPoints").textContent = data.points.length;
-		document.getElementById("statClosest").textContent = data.closest.length;
-		document.getElementById("statDistance").textContent = data.direct_distance.toFixed(1);
-		document.getElementById("statChain").textContent = data.chain_distance.toFixed(1);
-		document.getElementById("statDetour").textContent = `${data.detour_factor.toFixed(2)}×`;
-		document.getElementById("statMaxHop").textContent = data.max_hop.toFixed(1);
-		document.getElementById("statIslands").textContent = data.bridges ? data.bridges.length + 1 : 1;
+		const statIslands = data.bridges ? data.bridges.length + 1 : 1;
+		if (IS_DEMO) {
+			animateCountUp(document.getElementById("statPoints"), data.points.length);
+			animateCountUp(document.getElementById("statClosest"), data.closest.length);
+			animateCountUp(document.getElementById("statDistance"), data.direct_distance, 1);
+			animateCountUp(document.getElementById("statChain"), data.chain_distance, 1);
+			animateCountUp(document.getElementById("statDetour"), data.detour_factor, 2, "×");
+			animateCountUp(document.getElementById("statMaxHop"), data.max_hop, 1);
+			animateCountUp(document.getElementById("statIslands"), statIslands);
+		} else {
+			document.getElementById("statPoints").textContent = data.points.length;
+			document.getElementById("statClosest").textContent = data.closest.length;
+			document.getElementById("statDistance").textContent = data.direct_distance.toFixed(1);
+			document.getElementById("statChain").textContent = data.chain_distance.toFixed(1);
+			document.getElementById("statDetour").textContent = `${data.detour_factor.toFixed(2)}×`;
+			document.getElementById("statMaxHop").textContent = data.max_hop.toFixed(1);
+			document.getElementById("statIslands").textContent = statIslands;
+		}
 
 		const detourGood = data.detour_factor < 1.1;
 		const engineTag = data.engine === "cpp"

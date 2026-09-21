@@ -525,3 +525,61 @@ footer a { color: var(--text-dim); }
 	.hero-cta { flex-direction: column; }
 	.btn { width: 100%; }
 }
+
+/* ---------- Demo mode (?demo=1) ---------- */
+/* Recording-friendly polish only - gated entirely behind the #demo-mode
+   class script.js adds when ?demo=1 is present. Never applies otherwise. */
+
+body.demo-mode {
+	font-size: 1.08em;
+}
+body.demo-mode .stat-value { font-size: 1.6rem; }
+body.demo-mode .lede, body.demo-mode .panel-head p { font-size: 1.02em; }
+
+/* Smooth fade+rise for the stats block the moment it's revealed, instead of
+   the plain [hidden] snap-in - gives the recording a beat of motion right
+   as numbers land. */
+body.demo-mode .stats {
+	animation: demoStatsIn 0.5s ease both;
+}
+@keyframes demoStatsIn {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+/* Canvas gets a soft fade-in whenever a fresh route is drawn (toggled by
+   script.js around each draw() call) instead of popping in instantly. */
+body.demo-mode #canvas.demo-fade-in { animation: demoCanvasIn 0.6s ease both; }
+@keyframes demoCanvasIn {
+	from { opacity: 0; filter: saturate(0.6) blur(2px); }
+	to { opacity: 1; filter: saturate(1) blur(0); }
+}
+
+/* Deterministic progress sweep under the map while a route is "computing" -
+   real solve time is a handful of ms, too fast to read on camera, so demo
+   mode stretches it into a visible, intentional-looking bar fill instead of
+   a jump cut. */
+.demo-progress {
+	position: absolute;
+	left: 0; right: 0; bottom: 0;
+	height: 3px;
+	background: rgba(255,255,255,0.08);
+	overflow: hidden;
+	border-radius: 0 0 var(--radius) var(--radius);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+.demo-progress.is-active { opacity: 1; }
+.demo-progress-bar {
+	height: 100%;
+	width: 0%;
+	background: linear-gradient(90deg, var(--accent-2), var(--accent), var(--accent-3));
+	background-size: 200% 100%;
+	transition: width 0.9s cubic-bezier(0.22, 0.61, 0.36, 1);
+	animation: demoBarShimmer 1.2s linear infinite;
+}
+@keyframes demoBarShimmer { to { background-position: -200% 0; } }
+
+/* Demo mode never shows dev-only chrome. */
+body.demo-mode #clickStatus.is-dev-hint { display: none; }
