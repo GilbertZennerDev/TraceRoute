@@ -70,6 +70,39 @@ function demoProgressFinish() {
 	setTimeout(() => demoProgressEl.classList.remove("is-active"), 350);
 }
 
+// --- Demo autoplay loop ----------------------------------------------------
+// The whole point of ?demo=1 is a link someone can open and just record —
+// no clicking required. After every completed run this schedules the next
+// one: clear the picked start/end (so the backend rolls a brand new random
+// route, see main.py) and, every few cycles, swap the View dropdown so a
+// recording loop shows all three renderers instead of sitting on 2D forever.
+// Cancelled/restarted whenever a real click or view change happens so a
+// human interacting with the page doesn't get fought by the timer.
+const DEMO_HOLD_MS = 4200; // time to sit on a finished route before cycling
+const DEMO_VIEW_CYCLE = ["2d", "3d-cesium", "2d", "3d-three"]; // 2D shows up twice - the safest, always-fast renderer
+let demoAutoplayTimer = null;
+let demoCycleIndex = 0;
+
+function demoAutoplayCancel() {
+	if (demoAutoplayTimer) clearTimeout(demoAutoplayTimer);
+	demoAutoplayTimer = null;
+}
+
+function demoAutoplaySchedule() {
+	if (!IS_DEMO) return;
+	demoAutoplayCancel();
+	demoAutoplayTimer = setTimeout(() => {
+		demoCycleIndex = (demoCycleIndex + 1) % DEMO_VIEW_CYCLE.length;
+		const nextView = DEMO_VIEW_CYCLE[demoCycleIndex];
+		picked = { start: null, waypoints: [], end: null };
+		if (viewSelectEl && viewSelectEl.value !== nextView) {
+			viewSelectEl.value = nextView;
+			viewSelectEl.dispatchEvent(new Event("change"));
+		}
+		form.dispatchEvent(new Event("submit"));
+	}, DEMO_HOLD_MS);
+}
+
 // Renders at a higher internal resolution than the CSS box (capped at 2x) -
 // the canvas is displayed at a fixed CSS size regardless (see style.css),
 // so this only buys crispness on high-DPI screens; every drawing routine
@@ -186,6 +219,7 @@ function handlePick(e) {
 	} else {
 		picked.end = world;
 	}
+	demoAutoplayCancel(); // a real click means a human is driving, not the loop
 	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
@@ -195,6 +229,7 @@ function undoLastPoint() {
 	if (picked.end) picked.end = null;
 	else if (picked.waypoints.length) picked.waypoints.pop();
 	else if (picked.start) picked.start = null;
+	demoAutoplayCancel();
 	stopFlowAnimation();
 	updateClickStatus();
 	drawPreview();
@@ -770,6 +805,7 @@ form.addEventListener("submit", async (e) => {
 		info.textContent = `Error: ${err.message}`;
 	} finally {
 		setLoading(false);
+		demoAutoplaySchedule();
 	}
 });
 

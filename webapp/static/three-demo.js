@@ -657,6 +657,7 @@
 			info3d.textContent = `Error: ${err.message}`;
 		} finally {
 			setLoading3d(false);
+			demoAutoplaySchedule();
 		}
 	});
 
