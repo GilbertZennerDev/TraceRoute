@@ -14,7 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# matching-engine is a private repo, so the git clone pip runs needs a
+# token — passed as a BuildKit secret (not a build-arg) so it never lands
+# in an image layer.
+RUN --mount=type=secret,id=gh_token \
+    git config --global url."https://$(cat /run/secrets/gh_token)@github.com/".insteadOf "https://github.com/" \
+    && pip install --no-cache-dir -r requirements.txt \
+    && git config --global --unset url."https://$(cat /run/secrets/gh_token)@github.com/".insteadOf
 
 COPY app ./app
 COPY static ./static

@@ -29,10 +29,14 @@ function Invoke-Step {
 }
 
 Invoke-Step "Pulling latest code" { git pull }
+# matching-engine is a private repo the image's pip install clones from —
+# passed to the build as a BuildKit secret (never baked into a layer),
+# sourced from the local gh CLI's token so nothing is hardcoded here.
+$env:GH_TOKEN = gh auth token
 Invoke-Step "Building Docker image" {
     # --pull refreshes base layers so a stale local cache doesn't silently
     # skip security patches.
-    docker build --pull -t $ImageName ./webapp
+    docker build --pull --secret id=gh_token,env=GH_TOKEN -t $ImageName ./webapp
 }
 Invoke-Step "Deploying to server" {
     # Streams the image straight into the server's Docker daemon over SSH —
