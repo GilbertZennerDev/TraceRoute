@@ -17,7 +17,6 @@ $ServerUser = "root"
 $ServerHost = "89.167.25.230"
 $ServerPath = "/opt/TraceRoute"
 $ImageName  = "traceroute-app:latest"
-$TarFile    = "traceroute-app.tar"
 
 function Invoke-Step {
     param([string]$Description, [scriptblock]$Command)
@@ -30,21 +29,20 @@ function Invoke-Step {
 }
 
 Invoke-Step "Pulling latest code" { git pull }
-Invoke-Step "Building Docker image" { docker build -t $ImageName ./webapp }
-Invoke-Step "Saving image to $TarFile" { docker save -o $TarFile $ImageName }
-Invoke-Step "Copying to server" { scp $TarFile "${ServerUser}@${ServerHost}:${ServerPath}/" }
-Invoke-Step "Loading image and restarting container on server" {
-    # --force-recreate is required: `docker compose up -d` alone only
-    # recreates a container when the *resolved compose config* changes, not
-    # when a mutable tag like `traceroute-app:latest` starts pointing at
-    # different image content — without it, `docker load` silently updates
-    # the local image while the running container keeps serving the old one.
-    ssh "${ServerUser}@${ServerHost}" "cd $ServerPath && git pull && docker load -i $TarFile && docker compose up -d --force-recreate && rm $TarFile"
+Invoke-Step "Building Docker image" {
+    # --pull refreshes base layers so a stale local cache doesn't silently
+    # skip security patches.
+    docker build --pull -t $ImageName ./webapp
 }
-
-if (Test-Path $TarFile) {
-    Write-Host "==> Cleaning up local tar" -ForegroundColor Cyan
-    Remove-Item $TarFile
+Invoke-Step "Deploying to server" {
+    # Streams the image straight into the server's Docker daemon over SSH —
+    # no local .tar file and no separate scp hop. --force-recreate is
+    # required: `docker compose up -d` alone only recreates a container when
+    # the *resolved compose config* changes, not when a mutable tag like
+    # `traceroute-app:latest` starts pointing at different image content.
+    # `docker image prune -f` clears the now-dangling previous `:latest`
+    # layer so repeated deploys don't slowly fill the server's disk.
+    docker save $ImageName | ssh "${ServerUser}@${ServerHost}" "cd $ServerPath && git pull && docker load && docker compose up -d --force-recreate && docker image prune -f"
 }
 
 Write-Host "==> Done — https://trace-route.workflowsolved.com" -ForegroundColor Green
