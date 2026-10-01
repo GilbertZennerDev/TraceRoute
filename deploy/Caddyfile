@@ -1,0 +1,18 @@
+# TraceRoute - merge this block into the shared Caddy config at
+# /opt/feierblum/caddy/Caddyfile (see E:\WebApps\prompt.md, "Gated apps").
+# Password is in ../pwd.md (gitignored); only the hash lives here.
+
+traceroute.workflowsolved.com {
+	basic_auth {
+		admin $2a$14$78hNdfwxuwMJSspRuQ/gjuOkxIu8qw76qF2ojkWu5d1SyLwKo/1kO
+	}
+
+	reverse_proxy trace-route:8000
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
