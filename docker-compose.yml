@@ -13,9 +13,9 @@ services:
       - edge
 
 networks:
-  # The shared edge Caddy on this Hetzner box is feierblum-caddy-1, part of
+  # The shared edge Caddy on this Hetzner box is workflowsolved-caddy, part of
   # the feierblum-networking compose stack (confirmed via ../touch-me's
   # docker-compose.yml, which resolved this the same way).
   edge:
-    name: feierblum_default
+    name: edge
     external: true

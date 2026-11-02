@@ -5,8 +5,8 @@
 #   1. This repo must be `git clone`d into $ServerPath already (this script
 #      runs `git pull` there, it doesn't clone).
 #   2. Add the block from Caddyfile (this repo) into
-#      ../feierblum-networking/Caddyfile on the server and reload it — this
-#      stack joins that Caddy's "feierblum_default" network, it runs no
+#      ../workflow-solved/edge/caddy/Caddyfile on the server and reload it — this
+#      stack joins that Caddy's "edge" network, it runs no
 #      Caddy of its own (see docker-compose.yml).
 #
 # Usage: .\deploy.ps1
